@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Planning documents and tool output, not part of the app
+/outputs/
+/package.json
+node_modules/
+
+# Local dev helper (starts the backend, adb reverse tunnel)
+/dev-start.ps1
