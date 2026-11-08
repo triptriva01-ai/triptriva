@@ -1,0 +1,60 @@
+# Codemagic CI: builds the iOS app on a cloud Mac and uploads it to TestFlight.
+#
+# One-time setup in Codemagic (see https://docs.codemagic.io):
+#   1. Team settings > Integrations > Developer Portal: add an App Store
+#      Connect API key and name it "TripTrivia ASC" (must match
+#      `integrations.app_store_connect` below).
+#   2. App settings > Environment variables: create the group "maps" with
+#      MAPS_API_KEY = <iOS Maps SDK key>, marked Secure.
+#   3. In App Store Connect, create the app with bundle id
+#      com.triptrivia.tripTrivia before the first build.
+
+workflows:
+  ios-testflight:
+    name: iOS TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: TripTrivia ASC
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - maps
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.triptrivia.tripTrivia
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+    scripts:
+      - name: Write the iOS Maps key
+        script: |
+          # Secrets.xcconfig is git-ignored; recreate it from the secure variable.
+          if [ -z "$MAPS_API_KEY" ]; then
+            echo "MAPS_API_KEY is not set; maps will be blank in this build." >&2
+          fi
+          echo "MAPS_API_KEY = $MAPS_API_KEY" > ios/Flutter/Secrets.xcconfig
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Install pods
+        script: cd ios && pod install --repo-update
+      - name: Set up code signing
+        script: xcode-project use-profiles
+      - name: Build ipa
+        script: |
+          flutter build ipa --release \
+            --build-number=$BUILD_NUMBER \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
