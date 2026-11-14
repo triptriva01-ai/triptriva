@@ -1,3 +1,5 @@
+import '../constants/api_endpoints.dart';
+
 /// A stay / houseboat / adventure listing as shown on cards across the app.
 class Listing {
   const Listing({
@@ -10,19 +12,33 @@ class Listing {
     this.originalPrice,
     this.discountPercent,
     this.isWishlisted = false,
+    this.type = '',
   });
 
+  /// Reads the API's `ListingSummaryResponse` (`title`, `coverImage`, `city`,
+  /// `basePrice`, `avgRating`) and the older card shape alike.
   factory Listing.fromJson(Map<String, dynamic> json) {
+    final location = json['location'];
+    final price = _toDouble(json['price']) ?? _toDouble(json['basePrice']) ?? 0;
+    final original = _toDouble(json['originalPrice']);
     return Listing(
-      id: '${json['id'] ?? ''}',
-      title: '${json['title'] ?? ''}',
-      location: '${json['location'] ?? ''}',
-      imageUrl: '${json['imageUrl'] ?? json['image'] ?? ''}',
-      rating: _toDouble(json['rating']) ?? 0,
-      price: _toDouble(json['price']) ?? 0,
-      originalPrice: _toDouble(json['originalPrice']),
-      discountPercent: _toInt(json['discountPercent']),
+      id: '${json['id'] ?? json['listingId'] ?? ''}',
+      title: '${json['title'] ?? json['listingTitle'] ?? ''}',
+      location: location is String && location.isNotEmpty
+          ? location
+          : '${json['city'] ?? ''}',
+      imageUrl: ApiConfig.mediaUrl(
+        '${json['imageUrl'] ?? json['coverImage'] ?? json['image'] ?? ''}',
+      ),
+      rating: _toDouble(json['rating']) ?? _toDouble(json['avgRating']) ?? 0,
+      price: price,
+      originalPrice: original,
+      discountPercent: _toInt(json['discountPercent']) ??
+          (original != null && original > price && original > 0
+              ? ((original - price) * 100 / original).round()
+              : null),
       isWishlisted: json['isWishlisted'] == true,
+      type: '${json['type'] ?? json['listingType'] ?? ''}',
     );
   }
 
@@ -35,6 +51,9 @@ class Listing {
   final double? originalPrice;
   final int? discountPercent;
   final bool isWishlisted;
+
+  /// `stay`, `houseboat` or `adventure`.
+  final String type;
 
   bool get hasDiscount => (discountPercent ?? 0) > 0;
 
@@ -49,6 +68,7 @@ class Listing {
       originalPrice: originalPrice,
       discountPercent: discountPercent,
       isWishlisted: isWishlisted ?? this.isWishlisted,
+      type: type,
     );
   }
 

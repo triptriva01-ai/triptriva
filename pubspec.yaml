@@ -44,6 +44,9 @@ dependencies:
   url_launcher: ^6.3.3
   google_maps_flutter: ^2.18.1
   geolocator: ^14.1.2
+  path_provider: ^2.1.6
+  open_filex: ^5.0.0
+  razorpay_flutter: ^1.4.7
 
 dev_dependencies:
   flutter_test:
@@ -55,6 +58,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -70,6 +74,15 @@ flutter:
   assets:
     - assets/icons/
     - assets/splash/
+
+  fonts:
+    # SIL Open Font License — see assets/fonts/poppins/OFL.txt
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/poppins/Poppins-Light.ttf
+          weight: 300
+        - asset: assets/fonts/poppins/Poppins-Bold.ttf
+          weight: 700
 
   # To add assets to your application, add an assets section, like this:
   # assets:

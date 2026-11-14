@@ -18,6 +18,35 @@ abstract final class HomeStrings {
   static const categoryHouseBoat = 'House Boat';
   static const categoryAdventure = 'Adventure';
 
+  static const filter = 'Filter';
+  static const calendar = 'Calender';
+  static const above = 'Above';
+  static const below = 'Below';
+  static const rupee = '₹';
+
+  static const priceOptions = [
+    '₹500 Below',
+    '₹500 - ₹1000',
+    '₹1000 - ₹5000',
+    '₹5000 Above',
+  ];
+
+  static const capacityOptions = [
+    '30 person capacity',
+    '20 person capacity',
+    '10 person capacity',
+    'couple boat',
+  ];
+
+  static const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thur', 'Fri', 'Sat'];
+  static const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  static const wishlistFailed = 'Could not update wishlist';
+  static const emptySection = 'Nothing here yet';
+
   static const pendingTitle = 'Coming soon';
   static String pendingMessage(String feature) =>
       '$feature will open once the screen is built.';
@@ -68,6 +97,20 @@ abstract final class HomeSizes {
   static const filterIconToLabel = 8.0;
   static const filtersToSections = 30.0;
 
+  /// Pop-ups under the filter row.
+  static const panelGap = 10.0;
+  static const panelRadius = 20.0;
+  static const panelPadding = 20.0;
+  static const panelCloseSize = 22.0;
+  static const panelOptionGap = 22.0;
+  static const filterPanelWidth = 250.0;
+  static const pricePanelWidth = 270.0;
+  static const calendarPanelWidth = 360.0;
+  static const calendarHeaderHeight = 50.0;
+  static const calendarCellHeight = 40.0;
+  static const priceFieldHeight = 36.0;
+  static const priceFieldRadius = 8.0;
+
   /// Inset of the overlays on the banner. The listing card's own spacing
   /// tokens live with the card, in `widgets/listing/listing_card_theme.dart`.
   static const overlayInset = 10.0;
@@ -98,6 +141,9 @@ abstract final class HomePalette {
   static const imagePlaceholder = Color(0xFFD9D9D9);
   static const dotStart = Color(0xFFD0D0D0);
   static const dotEnd = Color(0xFF999999);
+  static const panelStrip = Color(0xFFF2F2F2);
+  static const priceField = Color(0xFFD9D9D9);
+  static const mutedDay = Color(0xFFC4C4C4);
 }
 
 abstract final class HomeGradients {
@@ -249,4 +295,60 @@ abstract final class HomeStyle {
     decorationColor: HomePalette.blue,
   );
 
+  static const filterLabelActive = TextStyle(
+    color: HomePalette.black,
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    height: 1.19,
+    letterSpacing: 0,
+  );
+
+  static const panelTitle = TextStyle(
+    color: HomePalette.black,
+    fontSize: 20,
+    fontWeight: FontWeight.w500,
+    height: 1.17,
+  );
+
+  static const panelTitleSmall = TextStyle(
+    color: HomePalette.black,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    height: 1.19,
+  );
+
+  static const panelOption = TextStyle(
+    color: HomePalette.black,
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    height: 1.19,
+  );
+
+  static const panelOptionSelected = TextStyle(
+    color: HomePalette.green,
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    height: 1.19,
+  );
+
+  static const calendarMonth = TextStyle(
+    color: HomePalette.green,
+    fontSize: 18,
+    fontWeight: FontWeight.w500,
+    height: 1.17,
+  );
+
+  static const calendarWeekday = TextStyle(
+    color: HomePalette.green,
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    height: 1.17,
+  );
+
+  static const calendarDay = TextStyle(
+    color: HomePalette.black,
+    fontSize: 13,
+    fontWeight: FontWeight.w400,
+    height: 1.17,
+  );
 }

@@ -1,10 +1,19 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:get/get.dart';
 
 import '../../../data/models/booking.dart';
 import '../../../data/models/booking_detail.dart';
 import '../../../data/providers/api_exception.dart';
 import '../../../data/services/booking_service.dart';
+import '../../../data/services/review_service.dart';
+import '../../../routes/app_pages.dart';
+import '../widgets/write_review_sheet.dart';
 import '../constants/booking_detail_constants.dart';
 import '../../../data/services/geo_service.dart';
 
@@ -15,6 +24,7 @@ import '../../../data/services/geo_service.dart';
 /// round trip, so it opens instantly.
 class BookingDetailController extends GetxController {
   final BookingService _bookingService = Get.find<BookingService>();
+  final ReviewService _reviewService = Get.find<ReviewService>();
 
   final detail = Rxn<BookingDetail>();
   final isLoading = false.obs;
@@ -73,7 +83,6 @@ class BookingDetailController extends GetxController {
       }
     } on ApiException catch (error) {
       Get.log('Booking detail load failed: $error');
-      _loadSampleDetail();
       // Only complain if there is nothing at all to show.
       if (detail.value == null) {
         errorMessage.value = error.message;
@@ -81,62 +90,6 @@ class BookingDetailController extends GetxController {
     } finally {
       isLoading.value = false;
     }
-  }
-
-  // ---------------------------------------------------------------------
-  // Development placeholder — mirrors `ReservationsController`, and should be
-  // removed once `GET /api/bookings/{id}` serves real data.
-  // ---------------------------------------------------------------------
-
-  void _loadSampleDetail() {
-    final existing = detail.value;
-
-    detail.value = BookingDetail(
-      id: existing?.id ?? bookingId,
-      bookingId: existing?.bookingId ?? 'GYZ9948563201928',
-      listingName: existing?.listingName ?? 'Kerala Boat Ac',
-      status: existing?.status ?? BookingStatus.booked,
-      address: 'Palarivattam , Kochi , Kerala',
-      partnerName: 'kayakkin thrissur',
-      partnerPhone: '+919000000000',
-      bookingDate: '31 June 2026',
-      tripType: 'Day Trip',
-      timeSlot: '11 AM - 05 PM',
-      stay: const StayDetails(rooms: 3, bathrooms: 3, beds: 6),
-      facilities: const ['Free wifi', 'Musical dramas', 'DJ', '3 rooms'],
-      policies: const [
-        'Cancellation is allowed before 10 days before the slot date',
-        'Guests are not allowed',
-        'Outside food is not allowed',
-        '3 rooms',
-      ],
-      about: 'A houseboat is a unique type of accommodation designed to offer '
-          'the comfort of a home while floating on water. Traditionally used '
-          'for transportation and living, houseboats today are popular for '
-          'leisure travel and relaxing vacations, especially in scenic '
-          'backwater destinations.',
-      total: 12100,
-      charges: const [
-        BillLine(label: 'Day Trip Charge', amount: 500),
-        BillLine(label: 'Google pay', amount: 11600),
-      ],
-      billLines: const [
-        BillLine(label: 'Day Trip Charge', amount: 500, originalAmount: 1200),
-        BillLine(label: 'GST', amount: 500),
-        BillLine(label: 'Coupon Discount', amount: 0, isDeduction: true),
-        BillLine(
-          label: 'You have saved',
-          amount: 700,
-          isDeduction: true,
-          isSaving: true,
-        ),
-      ],
-      related: const RelatedListing(
-        id: '1',
-        name: 'Kerala Boat Ac',
-        address: 'Palarivattam , Kochi , Kerala',
-      ),
-    );
   }
 
   void goBack() => Get.back();
@@ -175,14 +128,117 @@ class BookingDetailController extends GetxController {
     if (!opened) _pending('Directions');
   }
 
-  /// Needs `url_launcher` to place the call; not a dependency yet.
-  void callPartner() => _pending('Calling the partner');
+  /// Dials the partner when the booking carries their number.
+  Future<void> callPartner() async {
+    final phone = detail.value?.partnerPhone.trim() ?? '';
+    if (phone.isEmpty) {
+      _notice(BookingDetailStrings.noPartnerPhone);
+      return;
+    }
+    await launchUrl(Uri(scheme: 'tel', path: phone));
+  }
 
-  void downloadInvoice() => _pending('Invoice download');
+  final isDownloading = false.obs;
 
-  void writeReview() => _pending(BookingDetailStrings.writeReview);
+  /// Fetches the PDF invoice, saves it and opens it in the PDF viewer.
+  Future<void> downloadInvoice() async {
+    final current = detail.value;
+    if (current == null || isDownloading.value) return;
+    if (!current.canDownloadInvoice) {
+      _notice(BookingDetailStrings.invoiceUnavailable);
+      return;
+    }
+    isDownloading.value = true;
+    try {
+      final bytes = await _bookingService.getInvoice(bookingId);
+      final folder = await getApplicationDocumentsDirectory();
+      final file = File('${folder.path}/invoice-${current.bookingId}.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      final result = await OpenFilex.open(file.path, type: 'application/pdf');
+      if (result.type != ResultType.done) {
+        _notice(BookingDetailStrings.invoiceSaved(file.path));
+      }
+    } on ApiException catch (error) {
+      _notice(error.message);
+    } finally {
+      isDownloading.value = false;
+    }
+  }
 
-  void openListing() => _pending(detail.value?.related?.name ?? 'Listing');
+  /// Star rating and a comment, posted once per completed booking.
+  Future<void> writeReview() async {
+    final current = detail.value;
+    if (current == null) return;
+    final review = await Get.bottomSheet<ReviewDraft>(
+      const WriteReviewSheet(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+    );
+    if (review == null) return;
+    try {
+      await _reviewService.submitReview(
+        bookingId: bookingId,
+        listingId: current.listingId.isNotEmpty
+            ? current.listingId
+            : current.related?.id ?? '',
+        rating: review.rating,
+        comment: review.comment,
+      );
+      _notice(BookingDetailStrings.reviewThanks);
+      await loadDetail();
+    } on ApiException catch (error) {
+      _notice(error.message);
+    }
+  }
+
+  /// Asks first, then cancels; the refund follows the listing's policy.
+  Future<void> cancelBooking() async {
+    final current = detail.value;
+    if (current == null || !current.canCancel) return;
+    final confirmed = await Get.dialog<bool>(
+      AlertDialog(
+        title: const Text(BookingDetailStrings.cancelTitle),
+        content: const Text(BookingDetailStrings.cancelBody),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text(BookingDetailStrings.keepBooking),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text(BookingDetailStrings.cancelBooking),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final data = await _bookingService.cancel(bookingId);
+      final cancellation = data is Map ? data['cancellation'] : null;
+      final refund = cancellation is Map ? cancellation['refundAmount'] : null;
+      _notice(
+        refund is num && refund > 0
+            ? BookingDetailStrings.cancelledWithRefund(formatRupees(refund.toDouble()))
+            : BookingDetailStrings.cancelled,
+      );
+      await loadDetail();
+    } on ApiException catch (error) {
+      _notice(error.message);
+    }
+  }
+
+  void openListing() {
+    final id = detail.value?.related?.id ?? detail.value?.listingId ?? '';
+    if (id.isEmpty) return;
+    Get.toNamed(Routes.LISTING_DETAIL, arguments: id);
+  }
+
+  void _notice(String message) => Get.snackbar(
+        detail.value?.listingName ?? '',
+        message,
+        duration: BookingDetailDurations.snackbar,
+        snackPosition: SnackPosition.BOTTOM,
+      );
 
   void _pending(String feature) {
     Get.snackbar(

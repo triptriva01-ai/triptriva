@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -9,108 +7,40 @@ import '../../../data/services/auth_service.dart';
 import '../../../routes/admin_guard.dart';
 import '../../../routes/app_pages.dart';
 
-/// Opacity + scale pair used to "pop" a single icon into view.
-class IconReveal {
-  const IconReveal({required this.opacity, required this.scale});
-
-  final Animation<double> opacity;
-  final Animation<double> scale;
-}
-
+/// Drives the splash timeline and decides where to go once it finishes.
+///
+/// The whole sequence runs off one [animationController] (0 → 1); the view
+/// slices it into phases (see `SplashTimeline` in the view), so the pacing
+/// can be tuned in one place without touching the navigation logic here.
 class SplashController extends GetxController
     with GetSingleTickerProviderStateMixin {
-  static const _animationDuration = Duration(milliseconds: 2200);
-  static const _navigationHold = Duration(milliseconds: 500);
+  static const _animationDuration = Duration(milliseconds: 3400);
+  static const _navigationHold = Duration(milliseconds: 350);
 
   late final AnimationController animationController;
-  late final Animation<double> routeProgress;
-  late final Animation<double> routeOpacity;
-
-  // Each travel icon reveals on its own staggered interval, like the Figma
-  // composite where tent / compass / paraglider / location animate in turn.
-  late final IconReveal location;
-  late final IconReveal paraglider;
-  late final IconReveal compass;
-  late final IconReveal tent;
-  late final IconReveal houseboat;
-
-  late final Animation<double> titleOpacity;
-  late final Animation<double> titleScale;
-  late final Animation<double> titleOffset;
 
   bool _canNavigate = true;
 
   @override
   void onInit() {
     super.onInit();
-
     animationController = AnimationController(
       vsync: this,
       duration: _animationDuration,
     )..addStatusListener(_handleAnimationStatus);
-
-    routeProgress = CurvedAnimation(
-      parent: animationController,
-      curve: Curves.easeOutCubic,
-    );
-    routeOpacity = Tween<double>(begin: 0, end: 0.6).animate(
-      CurvedAnimation(
-        parent: animationController,
-        curve: const Interval(0, 0.4, curve: Curves.easeOut),
-      ),
-    );
-
-    location = _reveal(0.12, 0.44);
-    paraglider = _reveal(0.22, 0.54);
-    compass = _reveal(0.30, 0.62);
-    tent = _reveal(0.38, 0.70);
-    houseboat = _reveal(0.46, 0.78);
-
-    titleOpacity = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: animationController,
-        curve: const Interval(0.62, 0.92, curve: Curves.easeOut),
-      ),
-    );
-    titleScale = Tween<double>(begin: 0.92, end: 1).animate(
-      CurvedAnimation(
-        parent: animationController,
-        curve: const Interval(0.62, 0.96, curve: Curves.easeOutCubic),
-      ),
-    );
-    titleOffset = Tween<double>(begin: 16, end: 0).animate(
-      CurvedAnimation(
-        parent: animationController,
-        curve: const Interval(0.62, 0.96, curve: Curves.easeOutCubic),
-      ),
-    );
-  }
-
-  IconReveal _reveal(double start, double end) {
-    return IconReveal(
-      opacity: Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(
-          parent: animationController,
-          curve: Interval(start, end, curve: Curves.easeOut),
-        ),
-      ),
-      scale: Tween<double>(begin: 0.55, end: 1).animate(
-        CurvedAnimation(
-          parent: animationController,
-          curve: Interval(
-            start,
-            math.min(1, end + 0.06),
-            curve: Curves.easeOutBack,
-          ),
-        ),
-      ),
-    );
   }
 
   @override
   void onReady() {
     super.onReady();
-    animationController.forward();
+    final reduceMotion = WidgetsBinding
+        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+    if (reduceMotion) {
+      // Skip straight to the final wordmark frame; completion still fires.
+      animationController.animateTo(1, duration: Duration.zero);
+    } else {
+      animationController.forward();
+    }
   }
 
   void _handleAnimationStatus(AnimationStatus status) {

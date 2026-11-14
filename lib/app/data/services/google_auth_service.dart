@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../constants/google_auth_config.dart';
@@ -27,6 +28,17 @@ class GoogleAuthService extends GetxService {
   Future<void> _ensureInitialized() async {
     if (_initialized) {
       return;
+    }
+    // Google's iOS SDK aborts the whole app (an uncatchable native
+    // exception) when it has no client ID, so check before calling it.
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        GoogleAuthConfig.iosClientId.isEmpty) {
+      throw const GoogleAuthException(
+        'iosNotConfigured',
+        'Google sign-in is not set up for iPhone yet. Please sign in with '
+            'your phone number or email.',
+      );
     }
     try {
       await GoogleSignIn.instance.initialize(

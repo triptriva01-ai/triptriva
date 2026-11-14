@@ -6,7 +6,6 @@ import '../../../data/providers/api_exception.dart';
 import '../../../data/services/booking_service.dart';
 import '../../../routes/app_pages.dart';
 import '../../../widgets/app_bottom_nav.dart';
-import '../constants/reservations_constants.dart';
 
 /// Which bookings the list is showing (FR-01).
 enum BookingFilter { all, booked, completed }
@@ -21,6 +20,10 @@ class ReservationsController extends GetxController {
   final selectedFilter = BookingFilter.all.obs;
   final searchQuery = ''.obs;
   final isLoading = false.obs;
+  final errorMessage = ''.obs;
+
+  /// Only bookings on this day, when set.
+  final dateFilter = Rxn<DateTime>();
   final currentTab = AppBottomNav.reservations.obs;
 
   @override
@@ -43,17 +46,27 @@ class ReservationsController extends GetxController {
   Future<void> loadBookings() async {
     isLoading.value = true;
     try {
+      final date = dateFilter.value;
       final data = await _bookingService.getBookings(
-        query: {'status': selectedFilter.value.name},
+        query: {
+          'status': selectedFilter.value.name,
+          'limit': 50,
+          if (date != null)
+            'date': '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+                '${date.day.toString().padLeft(2, '0')}',
+        },
       );
+      // A page (`{items: [...]}`) from the API.
+      final items = data is Map ? data['items'] : data;
       bookings.assignAll(
-        data is List
-            ? data.whereType<Map<String, dynamic>>().map(Booking.fromJson)
+        items is List
+            ? items.whereType<Map<String, dynamic>>().map(Booking.fromJson)
             : const <Booking>[],
       );
+      errorMessage.value = '';
     } on ApiException catch (error) {
       Get.log('Bookings load failed: $error');
-      _loadSampleBookings();
+      errorMessage.value = error.message;
     } finally {
       isLoading.value = false;
     }
@@ -100,7 +113,20 @@ class ReservationsController extends GetxController {
   void openBooking(Booking booking) =>
       Get.toNamed(Routes.BOOKING_DETAIL, arguments: booking);
 
-  void openDateFilter() => _pending('Date filter');
+  /// Picks a day to filter by; cancelling the picker clears the filter.
+  Future<void> openDateFilter() async {
+    final context = Get.context;
+    if (context == null) return;
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: dateFilter.value ?? now,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 2),
+    );
+    dateFilter.value = picked;
+    loadBookings();
+  }
 
   void onTabSelected(int index) {
     if (index == currentTab.value) return;
@@ -112,61 +138,5 @@ class ReservationsController extends GetxController {
       case AppBottomNav.profile:
         Get.offNamed(Routes.PROFILE);
     }
-  }
-
-  void _pending(String feature) {
-    Get.snackbar(
-      ReservationsStrings.pendingTitle,
-      ReservationsStrings.pendingMessage(feature),
-      duration: ReservationsDurations.snackbar,
-      snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
-  // ---------------------------------------------------------------------
-  // Development placeholder — remove once the backend serves real data.
-  // ---------------------------------------------------------------------
-
-  void _loadSampleBookings() {
-    bookings.assignAll(const [
-      Booking(
-        id: '1',
-        bookingId: '301928',
-        title: 'Kayaking in Thrissur',
-        people: 10,
-        date: '11 march',
-        timeSlot: '11pm-12pm',
-        groupLabel: 'march 15',
-      ),
-      Booking(
-        id: '2',
-        bookingId: '301928',
-        title: 'Kerala House Boat',
-        people: 10,
-        date: '11 march',
-        timeSlot: '11pm-12pm',
-        groupLabel: 'march 15',
-      ),
-      Booking(
-        id: '3',
-        bookingId: '301928',
-        title: 'Tree hut in Thrissur',
-        people: 10,
-        date: '11 march',
-        timeSlot: '11pm-12pm',
-        groupLabel: 'march 15',
-        status: BookingStatus.completed,
-      ),
-      Booking(
-        id: '4',
-        bookingId: '301928',
-        title: 'Kayaking in Thrissur',
-        people: 10,
-        date: '11 march',
-        timeSlot: '11pm-12pm',
-        groupLabel: 'march 15',
-        status: BookingStatus.completed,
-      ),
-    ]);
   }
 }

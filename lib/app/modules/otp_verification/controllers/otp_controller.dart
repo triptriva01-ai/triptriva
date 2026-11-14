@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../data/providers/api_exception.dart';
@@ -27,7 +26,9 @@ class OtpArgs {
 class OtpController extends GetxController {
   final AuthService _authService = Get.find<AuthService>();
 
-  final codeController = TextEditingController();
+  /// What has been typed. The field widget owns the TextEditingController
+  /// (so it lives exactly as long as the field) and reports here; clearing
+  /// this clears the field.
   final code = ''.obs;
   final isVerifying = false.obs;
   final isResending = false.obs;
@@ -49,21 +50,17 @@ class OtpController extends GetxController {
     identifier = args is OtpArgs ? args.identifier : '';
     devCode.value = args is OtpArgs ? args.devCode : null;
 
-    codeController.addListener(_syncCode);
     _startCooldown(args is OtpArgs ? args.resendAfterSeconds : 60);
   }
 
   @override
   void onClose() {
     _ticker?.cancel();
-    codeController
-      ..removeListener(_syncCode)
-      ..dispose();
     super.onClose();
   }
 
-  void _syncCode() {
-    code.value = codeController.text;
+  void onCodeChanged(String value) {
+    code.value = value;
 
     // Six digits is the whole input, so submit without making the user reach
     // for the button.
@@ -108,7 +105,7 @@ class OtpController extends GetxController {
       await Get.offAllNamed(AdminSession.landingRoute());
     } on ApiException catch (error) {
       _error(error.message);
-      codeController.clear();
+      code.value = '';
     } catch (error) {
       Get.log('OTP verify failed: $error');
       _error('$error');

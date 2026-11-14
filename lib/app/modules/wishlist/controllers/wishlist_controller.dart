@@ -20,6 +20,7 @@ class WishlistController extends GetxController {
 
   final listings = <Listing>[].obs;
   final isLoading = false.obs;
+  final errorMessage = ''.obs;
   final searchQuery = ''.obs;
   final currentTab = AppBottomNav.wishlist.obs;
 
@@ -56,14 +57,21 @@ class WishlistController extends GetxController {
       final data = await _wishlistService.getWishlist(
         query: category == null ? null : {'category': category},
       );
+      // `[{addedAt, listing: {...}}]` — every row is saved, so the heart is on.
       listings.assignAll(
         data is List
-            ? data.whereType<Map<String, dynamic>>().map(Listing.fromJson)
+            ? data.whereType<Map<String, dynamic>>().map((item) {
+                final listing = item['listing'];
+                return Listing.fromJson(
+                  listing is Map<String, dynamic> ? listing : item,
+                ).copyWith(isWishlisted: true);
+              })
             : const <Listing>[],
       );
+      errorMessage.value = '';
     } on ApiException catch (error) {
       Get.log('Wishlist load failed: $error');
-      _loadSampleListings();
+      errorMessage.value = error.message;
     } finally {
       isLoading.value = false;
     }
@@ -131,55 +139,5 @@ class WishlistController extends GetxController {
       case AppBottomNav.profile:
         Get.offNamed(Routes.PROFILE);
     }
-  }
-
-  // ---------------------------------------------------------------------
-  // Development placeholder — remove once `GET /api/wishlist` serves real
-  // data.
-  // ---------------------------------------------------------------------
-
-  void _loadSampleListings() {
-    listings.assignAll(const [
-      Listing(
-        id: '1',
-        title: 'Kerala Boat Ac',
-        location: 'Palarivattam',
-        rating: 4.5,
-        price: 500,
-        originalPrice: 1200,
-        discountPercent: 14,
-        isWishlisted: true,
-      ),
-      Listing(
-        id: '2',
-        title: 'Tree hut in Thrissur',
-        location: 'Palarivattam',
-        rating: 4.5,
-        price: 500,
-        originalPrice: 1200,
-        discountPercent: 14,
-        isWishlisted: true,
-      ),
-      Listing(
-        id: '3',
-        title: 'Kayaking in Thrissur',
-        location: 'Palarivattam',
-        rating: 4.5,
-        price: 500,
-        originalPrice: 1200,
-        discountPercent: 14,
-        isWishlisted: true,
-      ),
-      Listing(
-        id: '4',
-        title: 'Kerala House Boat',
-        location: 'Palarivattam',
-        rating: 4.5,
-        price: 500,
-        originalPrice: 1200,
-        discountPercent: 14,
-        isWishlisted: true,
-      ),
-    ]);
   }
 }

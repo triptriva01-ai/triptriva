@@ -14,6 +14,26 @@ int? _toInt(dynamic value) {
   return null;
 }
 
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+/// ISO date → "Sep 12, 2026"; anything else as it came.
+String _shortDate(dynamic value) {
+  final date = DateTime.tryParse('${value ?? ''}');
+  if (date == null) return '${value ?? ''}';
+  return '${_months[date.month - 1]} ${date.day}, ${date.year}';
+}
+
+/// `houseboat` → "House Boat".
+String _categoryLabel(String value) => switch (value.toLowerCase()) {
+      'houseboat' => 'House Boat',
+      'stay' => 'Stay',
+      'adventure' => 'Adventure',
+      _ => value,
+    };
+
 /// The two stat cards at the top of the Revenue dashboard.
 class RevenueSummary {
   const RevenueSummary({
@@ -25,10 +45,12 @@ class RevenueSummary {
 
   factory RevenueSummary.fromJson(Map<String, dynamic> json) {
     return RevenueSummary(
-      monthTotal: _toDouble(json['monthTotal']) ?? 0,
+      monthTotal: _toDouble(json['monthTotal'] ?? json['thisMonthTotal']) ?? 0,
       yearTotal: _toDouble(json['yearTotal']) ?? 0,
-      monthGrowthPercent: _toDouble(json['monthGrowthPercent']) ?? 0,
-      bookingCount: _toInt(json['bookingCount']) ?? 0,
+      monthGrowthPercent:
+          _toDouble(json['monthGrowthPercent'] ?? json['growthPercent']) ?? 0,
+      bookingCount:
+          _toInt(json['bookingCount'] ?? json['totalBookingsThisYear']) ?? 0,
     );
   }
 
@@ -46,9 +68,15 @@ class RevenuePoint {
 
   factory RevenuePoint.fromJson(Map<String, dynamic> json) {
     return RevenuePoint(
-      label: '${json['label'] ?? ''}',
-      value: _toDouble(json['value']) ?? 0,
+      label: '${json['label'] ?? _dayLabel(json['date'])}',
+      value: _toDouble(json['value'] ?? json['amount']) ?? 0,
     );
+  }
+
+  /// "2026-11-03" → "3".
+  static String _dayLabel(dynamic date) {
+    final parsed = DateTime.tryParse('${date ?? ''}');
+    return parsed == null ? '${date ?? ''}' : '${parsed.day}';
   }
 
   /// X-axis caption, e.g. "M" or "Jan".
@@ -70,13 +98,13 @@ class AdminBooking {
 
   factory AdminBooking.fromJson(Map<String, dynamic> json) {
     return AdminBooking(
-      id: '${json['id'] ?? ''}',
-      title: '${json['title'] ?? json['customerName'] ?? ''}',
-      listingName: '${json['listingName'] ?? ''}',
-      category: '${json['category'] ?? ''}',
+      id: '${json['id'] ?? json['bookingId'] ?? ''}',
+      title: '${json['title'] ?? json['customerName'] ?? json['guestName'] ?? ''}',
+      listingName: '${json['listingName'] ?? json['listingTitle'] ?? ''}',
+      category: _categoryLabel('${json['category'] ?? ''}'),
       imageUrl: '${json['imageUrl'] ?? ''}',
-      amount: _toDouble(json['amount']) ?? 0,
-      dateRange: '${json['dateRange'] ?? ''}',
+      amount: _toDouble(json['amount'] ?? json['netAmount']) ?? 0,
+      dateRange: '${json['dateRange'] ?? _shortDate(json['bookingDate'])}',
     );
   }
 
@@ -111,11 +139,12 @@ class AdminActivitySubmission {
     return AdminActivitySubmission(
       id: '${json['id'] ?? ''}',
       name: '${json['name'] ?? json['title'] ?? ''}',
-      category: '${json['category'] ?? ''}',
-      imageUrl: '${json['imageUrl'] ?? ''}',
-      ownerName: '${json['ownerName'] ?? json['partnerName'] ?? ''}',
+      category: _categoryLabel('${json['category'] ?? ''}'),
+      imageUrl: '${json['imageUrl'] ?? json['coverImage'] ?? ''}',
+      ownerName:
+          '${json['ownerName'] ?? json['partnerName'] ?? json['hostName'] ?? ''}',
       ownerAvatarUrl: '${json['ownerAvatarUrl'] ?? ''}',
-      dateRange: '${json['dateRange'] ?? ''}',
+      dateRange: '${json['dateRange'] ?? _shortDate(json['createdAt'])}',
       status: _statusFrom('${json['status'] ?? ''}'),
     );
   }
@@ -163,16 +192,19 @@ class PaymentRelease {
 
   factory PaymentRelease.fromJson(Map<String, dynamic> json) {
     return PaymentRelease(
-      id: '${json['id'] ?? ''}',
+      id: '${json['id'] ?? json['bookingId'] ?? ''}',
       bookingId: '${json['bookingId'] ?? ''}',
-      customerName: '${json['customerName'] ?? ''}',
+      customerName: '${json['customerName'] ?? json['guestName'] ?? ''}',
       customerAvatarUrl: '${json['customerAvatarUrl'] ?? ''}',
-      stage: _stageFrom('${json['stage'] ?? json['status'] ?? ''}'),
+      // The API's revenue rows carry `paymentStatus` (paid / refunded …).
+      stage: _stageFrom(
+        '${json['stage'] ?? json['paymentStatus'] ?? json['status'] ?? ''}',
+      ),
       advanceAmount: _toDouble(json['advanceAmount']) ?? 0,
-      secondAmount: _toDouble(json['secondAmount']) ?? 0,
-      totalAmount: _toDouble(json['totalAmount']) ?? 0,
-      date: '${json['date'] ?? ''}',
-      timeSlot: '${json['timeSlot'] ?? ''}',
+      secondAmount: _toDouble(json['secondAmount'] ?? json['refundAmount']) ?? 0,
+      totalAmount: _toDouble(json['totalAmount'] ?? json['grossAmount']) ?? 0,
+      date: '${json['date'] ?? _shortDate(json['bookingDate'])}',
+      timeSlot: '${json['timeSlot'] ?? json['paymentMethod'] ?? ''}',
     );
   }
 
@@ -197,7 +229,12 @@ class PaymentRelease {
   static PaymentStage _stageFrom(String value) {
     return switch (value.toLowerCase()) {
       'advancepaid' || 'advance_paid' || 'advance' => PaymentStage.advancePaid,
-      'completed' || 'paid' => PaymentStage.completed,
+      'completed' ||
+      'paid' ||
+      'captured' ||
+      'refunded' ||
+      'partially_refunded' =>
+        PaymentStage.completed,
       _ => PaymentStage.pending,
     };
   }

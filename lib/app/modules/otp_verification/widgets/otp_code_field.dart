@@ -21,10 +21,16 @@ class OtpCodeField extends StatefulWidget {
 
 class _OtpCodeFieldState extends State<OtpCodeField> {
   final FocusNode _focusNode = FocusNode();
+  final TextEditingController _text = TextEditingController();
+  late final Worker _clearWorker;
 
   @override
   void initState() {
     super.initState();
+    // The controller clears the code after a wrong attempt.
+    _clearWorker = ever<String>(widget.controller.code, (value) {
+      if (value.isEmpty && _text.text.isNotEmpty) _text.clear();
+    });
     // Open the keyboard as soon as the screen appears.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
@@ -33,6 +39,8 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
 
   @override
   void dispose() {
+    _clearWorker.dispose();
+    _text.dispose();
     _focusNode.dispose();
     super.dispose();
   }
@@ -45,29 +53,43 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Obx(() {
-            final value = widget.controller.code.value;
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var index = 0; index < OtpSizes.codeLength; index++) ...[
-                  if (index > 0) const SizedBox(width: OtpSizes.boxGap),
-                  _DigitBox(
-                    digit: index < value.length ? value[index] : '',
-                    isFocused: index == value.length,
-                  ),
-                ],
-              ],
-            );
-          }),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              // Full-size boxes when they fit; on a narrow screen the boxes
+              // and gaps shrink together so the row never overflows.
+              const length = OtpSizes.codeLength;
+              const natural =
+                  OtpSizes.boxWidth * length + OtpSizes.boxGap * (length - 1);
+              final scale = constraints.maxWidth < natural
+                  ? constraints.maxWidth / natural
+                  : 1.0;
+              return Obx(() {
+                final value = widget.controller.code.value;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var index = 0; index < length; index++) ...[
+                      if (index > 0) SizedBox(width: OtpSizes.boxGap * scale),
+                      _DigitBox(
+                        digit: index < value.length ? value[index] : '',
+                        isFocused: index == value.length,
+                        width: OtpSizes.boxWidth * scale,
+                      ),
+                    ],
+                  ],
+                );
+              });
+            },
+          ),
           // The real input, kept invisible behind the boxes.
           SizedBox(
             height: OtpSizes.boxHeight,
             child: Opacity(
               opacity: 0,
               child: TextField(
-                controller: widget.controller.codeController,
+                controller: _text,
                 focusNode: _focusNode,
+                onChanged: widget.controller.onCodeChanged,
                 keyboardType: TextInputType.number,
                 autofillHints: const [AutofillHints.oneTimeCode],
                 maxLength: OtpSizes.codeLength,
@@ -87,15 +109,20 @@ class _OtpCodeFieldState extends State<OtpCodeField> {
 }
 
 class _DigitBox extends StatelessWidget {
-  const _DigitBox({required this.digit, required this.isFocused});
+  const _DigitBox({
+    required this.digit,
+    required this.isFocused,
+    required this.width,
+  });
 
   final String digit;
   final bool isFocused;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: OtpSizes.boxWidth,
+      width: width,
       height: OtpSizes.boxHeight,
       alignment: Alignment.center,
       decoration: BoxDecoration(

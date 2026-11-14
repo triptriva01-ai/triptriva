@@ -49,7 +49,7 @@ class ListingDetailView extends GetView<ListingDetailController> {
             );
           }
 
-          return _Body(detail: detail, controller: controller);
+          return ListingDetailBody(detail: detail, controller: controller);
         }),
         bottomNavigationBar: Obx(() {
           final detail = controller.detail.value;
@@ -67,17 +67,29 @@ class ListingDetailView extends GetView<ListingDetailController> {
   }
 }
 
-class _Body extends StatelessWidget {
-  const _Body({required this.detail, required this.controller});
+/// The scrolling page under the bottom bar. Shared with the admin review
+/// screen, which shows the same listing without the traveller actions.
+class ListingDetailBody extends StatelessWidget {
+  const ListingDetailBody({
+    required this.detail,
+    required this.controller,
+    this.forReview = false,
+    super.key,
+  });
 
   final ListingDetail detail;
   final ListingDetailController controller;
+
+  /// Hides share, wishlist and the "Near By" rail.
+  final bool forReview;
 
   @override
   Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(child: ListingHero(controller: controller)),
+        SliverToBoxAdapter(
+          child: ListingHero(controller: controller, showActions: !forReview),
+        ),
         SliverToBoxAdapter(
           child: Transform.translate(
             // The white sheet rides up over the foot of the hero photo.
@@ -150,7 +162,7 @@ class _Body extends StatelessWidget {
       ],
       const SizedBox(height: ListingDetailSizes.sectionGap),
       ReviewsSection(detail: detail, controller: controller),
-      if (detail.nearby.isNotEmpty) ...[
+      if (!forReview && detail.nearby.isNotEmpty) ...[
         const SizedBox(height: ListingDetailSizes.sectionGap),
         const SectionRule(),
         const SizedBox(height: ListingDetailSizes.sectionGap),

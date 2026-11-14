@@ -108,8 +108,12 @@ class LanguageView extends GetView<LanguageController> {
     return SettingsPage(
       title: AccountSettingsStrings.languageTitle,
       onBack: controller.goBack,
-      child: Obx(
-        () => ListView.separated(
+      child: Obx(() {
+        // Read here, not in itemBuilder: ListView builds its rows lazily,
+        // after this builder returns, so reads there are not tracked.
+        final selected = controller.selected.value;
+        final saving = controller.savingCode.value;
+        return ListView.separated(
           padding: const EdgeInsets.fromLTRB(
             PartnerSizes.pagePadding,
             0,
@@ -120,7 +124,7 @@ class LanguageView extends GetView<LanguageController> {
           separatorBuilder: (_, _) => const SizedBox(height: 16),
           itemBuilder: (_, index) {
             final language = AccountSettingsConfig.languages[index];
-            final isSelected = controller.selected.value == language.code;
+            final isSelected = selected == language.code;
             return SettingsTile(
               title: language.nativeName,
               caption: language.englishName,
@@ -128,12 +132,12 @@ class LanguageView extends GetView<LanguageController> {
               onTap: () => controller.choose(language.code),
               trailing: SettingsRadio(
                 selected: isSelected,
-                busy: controller.savingCode.value == language.code,
+                busy: saving == language.code,
               ),
             );
           },
-        ),
-      ),
+        );
+      }),
     );
   }
 }

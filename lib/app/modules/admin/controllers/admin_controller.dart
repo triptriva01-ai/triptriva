@@ -6,6 +6,7 @@ import '../../../data/providers/api_exception.dart';
 import '../../../data/services/admin_service.dart';
 import '../../../routes/app_pages.dart';
 import '../constants/admin_constants.dart';
+import '../views/admin_activity_review_view.dart' show ActivityDecision;
 import '../widgets/admin_nav.dart';
 
 /// Shared behaviour for every admin tab: the bottom navigation and the
@@ -29,6 +30,25 @@ abstract class AdminBaseController extends GetxController {
   void onTabSelected(int index) {
     if (index == currentTab.value) return;
     Get.offNamed(_routes[index]);
+  }
+
+  /// The rows of a page (`{items: [...]}`) or a bare list.
+  static List<dynamic> _items(dynamic data) {
+    final items = data is Map ? data['items'] : data;
+    return items is List ? items : const [];
+  }
+
+  /// Shown when a load fails, instead of the stale or sample rows.
+  final errorMessage = ''.obs;
+
+  void showError(ApiException error) {
+    errorMessage.value = error.message;
+    Get.snackbar(
+      AdminStrings.pendingTitle,
+      error.message,
+      duration: AdminDurations.snackbar,
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   void pending(String feature) {
@@ -80,6 +100,9 @@ class AdminRevenueController extends AdminBaseController {
     AdminStrings.filterAdventure,
   ];
 
+  /// What the API expects for each of [categoryFilters].
+  static const categoryTypes = <String>['', 'houseboat', 'stay', 'adventure'];
+
   @override
   void onInit() {
     super.onInit();
@@ -105,7 +128,7 @@ class AdminRevenueController extends AdminBaseController {
       bookings.assignAll(_bookings(results[3]));
     } on ApiException catch (error) {
       Get.log('Admin revenue load failed: $error');
-      _loadSample();
+      showError(error);
     } finally {
       isLoading.value = false;
     }
@@ -114,10 +137,11 @@ class AdminRevenueController extends AdminBaseController {
   Map<String, dynamic>? _bookingQuery() {
     final index = selectedCategory.value;
     if (index == 0) return null;
-    return {'category': categoryFilters[index]};
+    return {'category': categoryTypes[index]};
   }
 
   List<RevenuePoint> _points(dynamic data) {
+    data = data is Map ? data['items'] : data;
     if (data is! List) return const [];
     return data
         .whereType<Map<String, dynamic>>()
@@ -126,18 +150,20 @@ class AdminRevenueController extends AdminBaseController {
   }
 
   List<({String label, double value})> _categories(dynamic data) {
+    data = data is Map ? data['items'] : data;
     if (data is! List) return const [];
     return data.whereType<Map<String, dynamic>>().map((json) {
       return (
-        label: '${json['label'] ?? json['category'] ?? ''}',
-        value: (json['value'] is num)
-            ? (json['value'] as num).toDouble()
+        label: '${json['label'] ?? json['displayName'] ?? json['category'] ?? ''}',
+        value: (json['value'] ?? json['amount']) is num
+            ? ((json['value'] ?? json['amount']) as num).toDouble()
             : 0.0,
       );
     }).toList();
   }
 
   List<AdminBooking> _bookings(dynamic data) {
+    data = data is Map ? data['items'] : data;
     if (data is! List) return const [];
     return data
         .whereType<Map<String, dynamic>>()
@@ -158,60 +184,6 @@ class AdminRevenueController extends AdminBaseController {
   // real data.
   // -------------------------------------------------------------------
 
-  void _loadSample() {
-    summary.value = const RevenueSummary(
-      monthTotal: 12450,
-      yearTotal: 148200,
-      monthGrowthPercent: 12,
-      bookingCount: 1248,
-    );
-    curve.assignAll(const [
-      RevenuePoint(label: 'J', value: 4200),
-      RevenuePoint(label: 'F', value: 6100),
-      RevenuePoint(label: 'M', value: 5400),
-      RevenuePoint(label: 'A', value: 8300),
-      RevenuePoint(label: 'M', value: 12450),
-    ]);
-    categories.assignAll(const [
-      (label: 'House Boat', value: 2500),
-      (label: 'Stay', value: 1500),
-      (label: 'Adventure', value: 500),
-    ]);
-    bookings.assignAll(const [
-      AdminBooking(
-        id: '1',
-        title: 'Kerala Boat Ac',
-        listingName: 'Kerala boat',
-        category: 'House Boat',
-        amount: 18500,
-        dateRange: 'Sep 12 - Sep 14, 2023',
-      ),
-      AdminBooking(
-        id: '2',
-        title: 'Kayaking in Thrissur',
-        listingName: 'Kayaking',
-        category: 'Adventure',
-        amount: 18500,
-        dateRange: 'Sep 12 - Sep 14, 2023',
-      ),
-      AdminBooking(
-        id: '3',
-        title: 'Tent House Stay',
-        listingName: 'Tent house',
-        category: 'home stay',
-        amount: 18500,
-        dateRange: 'Sep 12 - Sep 14, 2023',
-      ),
-      AdminBooking(
-        id: '4',
-        title: 'Refreshing Room',
-        listingName: 'Refreshing room',
-        category: 'Refreshing room',
-        amount: 18500,
-        dateRange: 'Sep 12 - Sep 14, 2023',
-      ),
-    ]);
-  }
 }
 
 // ── Activities ────────────────────────────────────────────────────────
@@ -229,6 +201,7 @@ class AdminActivitiesController extends AdminBaseController {
   final selectedCategory = 0.obs;
 
   static const categoryFilters = AdminRevenueController.categoryFilters;
+  static const categoryTypes = AdminRevenueController.categoryTypes;
 
   @override
   void onInit() {
@@ -243,12 +216,13 @@ class AdminActivitiesController extends AdminBaseController {
         adminService.getActivities(query: {
           'status': showPending.value ? 'pending' : 'accepted',
           if (selectedCategory.value > 0)
-            'category': categoryFilters[selectedCategory.value],
+            'category': categoryTypes[selectedCategory.value],
         }),
         adminService.activityAnalytics(),
       ]);
 
-      final list = results[0];
+      final page = results[0];
+      final list = page is Map ? page['items'] : page;
       activities.assignAll(
         list is List
             ? list
@@ -257,22 +231,23 @@ class AdminActivitiesController extends AdminBaseController {
             : const <AdminActivitySubmission>[],
       );
 
+      // `{total, categories: [{displayName, count}]}`.
       final analytics = results[1];
-      if (analytics is List) {
+      final shares = analytics is Map ? analytics['categories'] : analytics;
+      if (shares is List) {
         categories.assignAll(
-          analytics.whereType<Map<String, dynamic>>().map((json) {
+          shares.whereType<Map<String, dynamic>>().map((json) {
+            final value = json['value'] ?? json['count'];
             return (
-              label: '${json['label'] ?? ''}',
-              value: (json['value'] is num)
-                  ? (json['value'] as num).toDouble()
-                  : 0.0,
+              label: '${json['label'] ?? json['displayName'] ?? ''}',
+              value: value is num ? value.toDouble() : 0.0,
             );
           }),
         );
       }
     } on ApiException catch (error) {
       Get.log('Admin activities load failed: $error');
-      _loadSample();
+      showError(error);
     } finally {
       isLoading.value = false;
     }
@@ -330,33 +305,21 @@ class AdminActivitiesController extends AdminBaseController {
     }
   }
 
-  void openActivity(AdminActivitySubmission activity) => pending(activity.name);
-
-  void _loadSample() {
-    categories.assignAll(const [
-      (label: 'House Boat', value: 500),
-      (label: 'Stay', value: 150),
-      (label: 'Adventure', value: 50),
-    ]);
-    activities.assignAll([
-      for (var index = 0; index < 4; index++)
-        AdminActivitySubmission(
-          id: '${index + 1}',
-          name: 'Adventure Pack',
-          category: const [
-            'House Boat',
-            'Adventure',
-            'Home stay',
-            'Refreshing room',
-          ][index],
-          ownerName: 'john ty',
-          dateRange: 'Sep 12 - Sep 14, 2023',
-          status: showPending.value
-              ? ActivityStatus.pending
-              : ActivityStatus.accepted,
-        ),
-    ]);
+  /// Opens the submission as its product page; Reject / Accept there comes
+  /// back here so the list updates the same way as the inline buttons.
+  Future<void> openActivity(AdminActivitySubmission activity) async {
+    final decision = await Get.toNamed(
+      Routes.ADMIN_ACTIVITY_REVIEW,
+      arguments: activity,
+    );
+    switch (decision) {
+      case ActivityDecision.accept:
+        await accept(activity);
+      case ActivityDecision.reject:
+        await reject(activity);
+    }
   }
+
 }
 
 // ── Payment release ───────────────────────────────────────────────────
@@ -389,13 +352,13 @@ class AdminPaymentsController extends AdminBaseController {
         query: {'sort': sortByDate.value ? 'date' : 'user'},
       );
       payments.assignAll(
-        data is List
-            ? data.whereType<Map<String, dynamic>>().map(PaymentRelease.fromJson)
-            : const <PaymentRelease>[],
+        AdminBaseController._items(data)
+            .whereType<Map<String, dynamic>>()
+            .map(PaymentRelease.fromJson),
       );
     } on ApiException catch (error) {
       Get.log('Admin payments load failed: $error');
-      _loadSample();
+      showError(error);
     } finally {
       isLoading.value = false;
     }
@@ -418,42 +381,6 @@ class AdminPaymentsController extends AdminBaseController {
     expandedId.value = expandedId.value == payment.id ? '' : payment.id;
   }
 
-  void _loadSample() {
-    payments.assignAll(const [
-      PaymentRelease(
-        id: '1',
-        bookingId: '301928',
-        customerName: 'John Smith',
-        advanceAmount: 18500,
-        secondAmount: 18500,
-        totalAmount: 37000,
-        date: '20 April',
-        timeSlot: '10:00 AM - 4:00 PM',
-      ),
-      PaymentRelease(
-        id: '2',
-        bookingId: '301928',
-        customerName: 'John Smith',
-        stage: PaymentStage.advancePaid,
-        advanceAmount: 18500,
-        secondAmount: 18500,
-        totalAmount: 37000,
-        date: '20 April',
-        timeSlot: '10:00 AM - 4:00 PM',
-      ),
-      PaymentRelease(
-        id: '3',
-        bookingId: '301928',
-        customerName: 'John Smith',
-        stage: PaymentStage.completed,
-        advanceAmount: 18500,
-        secondAmount: 18500,
-        totalAmount: 37000,
-        date: '20 April',
-        timeSlot: '10:00 AM - 4:00 PM',
-      ),
-    ]);
-  }
 }
 
 // ── Users ─────────────────────────────────────────────────────────────
@@ -489,13 +416,13 @@ class AdminUsersController extends AdminBaseController {
         },
       });
       users.assignAll(
-        data is List
-            ? data.whereType<Map<String, dynamic>>().map(User.fromJson)
-            : const <User>[],
+        AdminBaseController._items(data)
+            .whereType<Map<String, dynamic>>()
+            .map(User.fromJson),
       );
     } on ApiException catch (error) {
       Get.log('Admin users load failed: $error');
-      _loadSample();
+      showError(error);
     } finally {
       isLoading.value = false;
     }
@@ -509,12 +436,4 @@ class AdminUsersController extends AdminBaseController {
 
   void openUser(User user) => pending(user.name);
 
-  void _loadSample() {
-    users.assignAll(const [
-      User(id: '1', name: 'Raju MNK', role: 'partner'),
-      User(id: '2', name: 'John Smith', role: 'partner'),
-      User(id: '3', name: 'Fahad', role: 'normal'),
-      User(id: '4', name: 'Anitha K', role: 'normal'),
-    ]);
-  }
 }

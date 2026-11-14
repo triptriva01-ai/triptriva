@@ -7,27 +7,31 @@ import '../providers/api_client.dart';
 class HomeService extends GetxService {
   final ApiClient _api = Get.find<ApiClient>();
 
-  /// All listings. Supported query params: category, date, priceMin, priceMax,
-  /// capacity, lat, lng, page, limit.
+  /// The whole home screen in one call: banners, categories, featured,
+  /// trending and (with lat/lng) nearby.
+  Future<dynamic> getFeed({double? lat, double? lng}) => _api.getRequest(
+        HomeEndpoints.feed,
+        query: {'lat': ?lat, 'lng': ?lng},
+      );
+
+  /// Published listings. Params: q, type, city, minPrice, maxPrice,
+  /// minRating, guests, lat, lng, radiusKm, sort (recommended / price_asc /
+  /// price_desc / rating / newest / popular / distance), page, limit.
+  /// Returns a page: `{items, totalCount, page, limit, hasNextPage}`.
   Future<dynamic> getListings({Map<String, dynamic>? query}) =>
       _api.getRequest(HomeEndpoints.listings, query: query);
 
-  Future<dynamic> getPopular() => _api.getRequest(HomeEndpoints.popular);
-
-  Future<dynamic> getNearby({required double lat, required double lng}) =>
-      _api.getRequest(HomeEndpoints.nearby, query: {'lat': lat, 'lng': lng});
-
-  Future<dynamic> getFresh() => _api.getRequest(HomeEndpoints.fresh);
-
-  Future<dynamic> getAllFresh({int page = 1, int limit = 20}) => _api.getRequest(
-        HomeEndpoints.freshAll,
-        query: {'page': page, 'limit': limit},
+  /// Nearest first. Params: lat, lng, radiusKm, limit, type.
+  Future<dynamic> getNearby({
+    required double lat,
+    required double lng,
+    String? type,
+    int limit = 10,
+  }) =>
+      _api.getRequest(
+        HomeEndpoints.nearby,
+        query: {'lat': lat, 'lng': lng, 'type': ?type, 'limit': limit},
       );
-
-  Future<dynamic> getNewAdventures() =>
-      _api.getRequest(HomeEndpoints.newAdventures);
-
-  Future<dynamic> getBanners() => _api.getRequest(HomeEndpoints.banners);
 
   Future<dynamic> getCategories() => _api.getRequest(HomeEndpoints.categories);
 }

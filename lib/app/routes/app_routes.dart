@@ -36,6 +36,10 @@ abstract class Routes {
   static const FEEDBACK = _Paths.FEEDBACK;
   static const CUSTOMER_SUPPORT = _Paths.CUSTOMER_SUPPORT;
   static const ABOUT = _Paths.ABOUT;
+  static const SEARCH = _Paths.SEARCH;
+  static const PAYMENT = _Paths.PAYMENT;
+  static const BOOKING_SUCCESS = _Paths.BOOKING_SUCCESS;
+  static const ADMIN_ACTIVITY_REVIEW = _Paths.ADMIN_ACTIVITY_REVIEW;
 }
 
 abstract class _Paths {
@@ -73,4 +77,8 @@ abstract class _Paths {
   static const FEEDBACK = '/settings/feedback';
   static const CUSTOMER_SUPPORT = '/settings/support';
   static const ABOUT = '/settings/about';
+  static const SEARCH = '/search';
+  static const PAYMENT = '/payment';
+  static const BOOKING_SUCCESS = '/booking-success';
+  static const ADMIN_ACTIVITY_REVIEW = '/admin/activity-review';
 }

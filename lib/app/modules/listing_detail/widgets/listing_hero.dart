@@ -7,9 +7,16 @@ import '../controllers/listing_detail_controller.dart';
 /// The photo behind the top of the page, with the back / share / wishlist
 /// buttons over it and the carousel dots at its foot.
 class ListingHero extends StatelessWidget {
-  const ListingHero({required this.controller, super.key});
+  const ListingHero({
+    required this.controller,
+    this.showActions = true,
+    super.key,
+  });
 
   final ListingDetailController controller;
+
+  /// False hides share and wishlist, e.g. when an admin reviews a listing.
+  final bool showActions;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +53,7 @@ class ListingHero extends StatelessWidget {
               onTap: controller.goBack,
             ),
           ),
-          Positioned(
+          if (showActions) Positioned(
             right: ListingDetailSizes.headerInset,
             top: topInset + 12,
             child: Row(

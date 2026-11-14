@@ -33,6 +33,23 @@ abstract final class BookingDetailStrings {
   static const viewLess = 'View less';
   static const goToPage = 'Go to page';
 
+  static const noPartnerPhone = "The partner's number isn't available.";
+  static const invoiceUnavailable =
+      'The invoice is ready once the booking is paid.';
+  static String invoiceSaved(String path) => 'Invoice saved to $path';
+  static const reviewThanks = 'Thanks for your review!';
+  static const cancelTitle = 'Cancel this booking?';
+  static const cancelBody =
+      "Any refund follows the listing's cancellation policy.";
+  static const keepBooking = 'Keep booking';
+  static const cancelBooking = 'Cancel booking';
+  static const cancelled = 'Booking cancelled.';
+  static String cancelledWithRefund(String amount) =>
+      'Booking cancelled. $amount will be refunded.';
+  static const reviewTitle = 'Rate your trip';
+  static const reviewHint = 'Tell others what it was like';
+  static const submit = 'Submit';
+
   static const pendingTitle = 'Coming soon';
   static String pendingMessage(String feature) =>
       '$feature will open once the screen is built.';

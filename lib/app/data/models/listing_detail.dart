@@ -1,3 +1,4 @@
+import '../constants/api_endpoints.dart';
 import 'listing.dart';
 import 'geo_place.dart';
 
@@ -14,8 +15,10 @@ class ListingReview {
   factory ListingReview.fromJson(Map<String, dynamic> json) {
     return ListingReview(
       id: '${json['id'] ?? ''}',
-      authorName: '${json['authorName'] ?? json['userName'] ?? ''}',
-      avatarUrl: '${json['avatarUrl'] ?? ''}',
+      authorName: '${json['authorName'] ?? json['userName'] ?? 'Guest'}',
+      avatarUrl: ApiConfig.mediaUrl(
+        '${json['avatarUrl'] ?? json['userAvatarUrl'] ?? ''}',
+      ),
       rating: _toDouble(json['rating']) ?? 0,
       comment: '${json['comment'] ?? ''}',
     );
@@ -46,13 +49,19 @@ class ListingHost {
     return ListingHost(
       name: '${json['name'] ?? ''}',
       role: '${json['role'] ?? 'Host'}',
-      avatarUrl: '${json['avatarUrl'] ?? ''}',
+      avatarUrl: ApiConfig.mediaUrl('${json['avatarUrl'] ?? ''}'),
     );
   }
 
   final String name;
   final String role;
   final String avatarUrl;
+}
+
+/// Names a session from its times, since the API sends none.
+abstract final class ListingSlotNames {
+  static String forTimes(String? start, String? end) =>
+      ListingSlot._nameFor(start, end);
 }
 
 /// One bookable time slot on a given date.
@@ -66,15 +75,56 @@ class ListingSlot {
     this.isAvailable = true,
   });
 
+  /// Reads the API's session (`slotId`, `startTime`/`endTime` as "HH:mm")
+  /// as well as the older `{id, name, timeRange}` shape. The API has no
+  /// session names, so one is derived from the times.
   factory ListingSlot.fromJson(Map<String, dynamic> json) {
+    final start = json['startTime'] as String?;
+    final end = json['endTime'] as String?;
     return ListingSlot(
-      id: '${json['id'] ?? ''}',
-      name: '${json['name'] ?? json['type'] ?? ''}',
-      timeRange: '${json['timeRange'] ?? json['time'] ?? ''}',
+      id: '${json['id'] ?? json['slotId'] ?? ''}',
+      name: '${json['name'] ?? json['type'] ?? _nameFor(start, end)}',
+      timeRange: '${json['timeRange'] ?? json['time'] ?? formatRange(start, end)}',
       price: ListingReview._toDouble(json['price']) ?? 0,
       originalPrice: ListingReview._toDouble(json['originalPrice']),
       isAvailable: json['isAvailable'] != false,
     );
+  }
+
+  static int? _minutes(String? hhmm) {
+    final parts = hhmm?.split(':');
+    if (parts == null || parts.length < 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    return h == null || m == null ? null : h * 60 + m;
+  }
+
+  /// Ends before it starts → runs overnight; starts in the evening → night.
+  static String _nameFor(String? start, String? end) {
+    final from = _minutes(start);
+    final to = _minutes(end);
+    if (from == null) return 'Session';
+    if (to != null && to <= from) return 'Overnight';
+    if (from >= 17 * 60) return 'Night Stay';
+    return 'Day Trip';
+  }
+
+  /// "11:00", "17:00" → "11 AM - 05 PM".
+  static String formatRange(String? start, String? end) {
+    String label(String? hhmm) {
+      final total = _minutes(hhmm);
+      if (total == null) return '';
+      final h = total ~/ 60;
+      final m = total % 60;
+      final hour12 = h % 12 == 0 ? 12 : h % 12;
+      final minutes = m == 0 ? '' : ':${m.toString().padLeft(2, '0')}';
+      return '${hour12.toString().padLeft(2, '0')}$minutes ${h < 12 ? 'AM' : 'PM'}';
+    }
+
+    final from = label(start);
+    final to = label(end);
+    if (from.isEmpty) return '';
+    return to.isEmpty ? from : '$from - $to';
   }
 
   final String id;
@@ -120,6 +170,7 @@ class ListingDetail {
     this.minPax = 1,
     this.cancellationNote = '',
     this.refreshingRoomNote = '',
+    this.type = '',
   });
 
   factory ListingDetail.fromJson(Map<String, dynamic> json) {
@@ -138,6 +189,40 @@ class ListingDetail {
     final locationPoint =
         GeoPoint.tryParse(location['latitude'], location['longitude']);
 
+    Map<String, dynamic> nested(String key) => json[key] is Map
+        ? (json[key] as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
+    final price = nested('price');
+    final rating = nested('rating');
+    final capacity = nested('capacity');
+    final policy = nested('policies');
+
+    // `images` (API) or `imageUrls`, with the cover first.
+    final cover = json['coverImage'] as String?;
+    final images = [
+      if (cover != null && cover.isNotEmpty) cover,
+      ...strings('imageUrls'),
+      ...strings('images').where((url) => url != cover),
+    ].map(ApiConfig.mediaUrl).toList();
+
+    // `policies` is a list of lines in the old shape, an object in the API's.
+    final policies = json['policies'] is List
+        ? strings('policies')
+        : [
+            if (policy['checkInTime'] != null)
+              'Check-in from ${policy['checkInTime']}',
+            if (policy['checkOutTime'] != null)
+              'Check-out by ${policy['checkOutTime']}',
+            ...((policy['houseRules'] as List?)?.map((rule) => '$rule') ??
+                const <String>[]),
+          ];
+    final reviewCount =
+        _toInt(json['reviewCount']) ?? _toInt(rating['count']) ?? 0;
+    final average = json['rating'] is num
+        ? ListingReview._toDouble(json['rating'])
+        : ListingReview._toDouble(rating['average']);
+    final maxGuests = _toInt(json['maxPax']) ?? _toInt(capacity['maxGuests']);
+
     return ListingDetail(
       id: '${json['id'] ?? ''}',
       name: '${json['name'] ?? json['title'] ?? ''}',
@@ -146,26 +231,26 @@ class ListingDetail {
           : json['location'] is String
               ? json['location'] as String
               : locationAddress,
-      imageUrls: strings('imageUrls'),
-      rooms: _toInt(json['rooms']),
-      bathrooms: _toInt(json['bathrooms']),
-      beds: _toInt(json['beds']),
+      imageUrls: images,
+      rooms: _toInt(json['rooms']) ?? _toInt(capacity['bedrooms']),
+      bathrooms: _toInt(json['bathrooms']) ?? _toInt(capacity['bathrooms']),
+      beds: _toInt(json['beds']) ?? _toInt(capacity['beds']),
       tagline: '${json['tagline'] ?? ''}',
-      rating: ListingReview._toDouble(json['rating']) ?? 0,
-      ratingLabel: '${json['ratingLabel'] ?? ''}',
+      rating: average ?? 0,
+      ratingLabel: '${json['ratingLabel'] ?? _ratingLabel(average)}',
       ratingCaption: '${json['ratingCaption'] ?? ''}',
-      reviewCount: _toInt(json['reviewCount']) ?? 0,
+      reviewCount: reviewCount,
       host: json['host'] is Map<String, dynamic>
           ? ListingHost.fromJson(json['host'] as Map<String, dynamic>)
           : null,
-      facilities: strings('facilities'),
-      policies: strings('policies'),
+      facilities: [...strings('facilities'), ...strings('amenities')],
+      policies: policies,
       coordinates: json['coordinates'] is String
           ? json['coordinates'] as String
           : locationPoint?.label ?? '',
       mapUrl: '${json['mapUrl'] ?? ''}',
       about: '${json['about'] ?? json['description'] ?? ''}',
-      reviews: (json['reviews'] as List?)
+      reviews: ((json['reviews'] ?? json['recentReviews']) as List?)
               ?.whereType<Map<String, dynamic>>()
               .map(ListingReview.fromJson)
               .toList() ??
@@ -181,11 +266,14 @@ class ListingDetail {
               .map(ListingSlot.fromJson)
               .toList() ??
           const [],
-      price: ListingReview._toDouble(json['price']) ?? 0,
+      price: ListingReview._toDouble(json['price']) ??
+          ListingReview._toDouble(price['basePrice']) ??
+          0,
       originalPrice: ListingReview._toDouble(json['originalPrice']),
-      maxPax: _toInt(json['maxPax']) ?? 60,
+      maxPax: maxGuests == null || maxGuests < 1 ? 60 : maxGuests,
       minPax: _toInt(json['minPax']) ?? 1,
-      cancellationNote: '${json['cancellationNote'] ?? ''}',
+      cancellationNote: '${json['cancellationNote'] ?? _cancellationText(policy['cancellationPolicy'])}',
+      type: '${json['type'] ?? ''}',
       refreshingRoomNote: '${json['refreshingRoomNote'] ?? ''}',
     );
   }
@@ -249,6 +337,68 @@ class ListingDetail {
 
   /// "Get 1 hour for refreshing" — only offered by some stays.
   final String refreshingRoomNote;
+
+  /// `stay`, `houseboat` or `adventure`.
+  final String type;
+
+  /// For the parts the page loads separately: the nearby rail and reviews.
+  ListingDetail copyWith({
+    String? nearbyTitle,
+    List<Listing>? nearby,
+    List<ListingReview>? reviews,
+    int? reviewCount,
+    List<ListingSlot>? slots,
+  }) {
+    return ListingDetail(
+      id: id,
+      name: name,
+      address: address,
+      imageUrls: imageUrls,
+      rooms: rooms,
+      bathrooms: bathrooms,
+      beds: beds,
+      tagline: tagline,
+      rating: rating,
+      ratingLabel: ratingLabel,
+      ratingCaption: ratingCaption,
+      reviewCount: reviewCount ?? this.reviewCount,
+      host: host,
+      facilities: facilities,
+      policies: policies,
+      coordinates: coordinates,
+      mapUrl: mapUrl,
+      about: about,
+      reviews: reviews ?? this.reviews,
+      nearbyTitle: nearbyTitle ?? this.nearbyTitle,
+      nearby: nearby ?? this.nearby,
+      slots: slots ?? this.slots,
+      price: price,
+      originalPrice: originalPrice,
+      maxPax: maxPax,
+      minPax: minPax,
+      cancellationNote: cancellationNote,
+      refreshingRoomNote: refreshingRoomNote,
+      type: type,
+    );
+  }
+
+  /// The API names the policy; the bottom bar wants a sentence.
+  static String _cancellationText(dynamic policy) => switch ('${policy ?? ''}') {
+        'flexible' => 'Free cancellation up to 24 hours before',
+        'moderate' => 'Free cancellation up to 5 days before, 50% after',
+        'strict' => '50% refund if cancelled 7 days before',
+        '' || 'null' => '',
+        final other => other,
+      };
+
+  /// "Great" for 4+, the badge under the rating on the summary card.
+  static String _ratingLabel(double? average) {
+    if (average == null || average <= 0) return '';
+    if (average >= 4.5) return 'Excellent';
+    if (average >= 4) return 'Great';
+    if (average >= 3) return 'Good';
+    return 'Fair';
+  }
 
   bool get hasStayCounts =>
       rooms != null || bathrooms != null || beds != null;

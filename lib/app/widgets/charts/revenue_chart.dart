@@ -34,6 +34,19 @@ class RevenueChart extends StatelessWidget {
   /// Bucket to mark with a dot and tooltip.
   final int? highlightIndex;
 
+  /// Most captions the axis shows; a 30-day series keeps every fifth or so.
+  static const _maxAxisLabels = 6;
+
+  /// Evenly spaced captions, always including the first and the last.
+  List<String> _axisLabels() {
+    if (labels.length <= _maxAxisLabels) return labels;
+    final last = labels.length - 1;
+    return [
+      for (var slot = 0; slot < _maxAxisLabels; slot++)
+        labels[(slot * last / (_maxAxisLabels - 1)).round()],
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     if (values.length < 2) {
@@ -63,13 +76,17 @@ class RevenueChart extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              for (final label in labels)
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Color(0xFF717786),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+              for (final label in _axisLabels())
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                    style: const TextStyle(
+                      color: Color(0xFF717786),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
             ],

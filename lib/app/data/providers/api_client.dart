@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:convert';
+import 'dart:async';
 import 'package:get/get.dart';
 
 import '../constants/api_endpoints.dart';
@@ -95,6 +98,54 @@ class ApiClient extends GetConnect {
       return false;
     } finally {
       _isRefreshing = false;
+    }
+  }
+
+  /// Raw bytes, e.g. a PDF. Uses `dart:io` rather than GetConnect, which
+  /// decodes every body as text.
+  Future<List<int>> getBytes(String path) async {
+    final client = HttpClient();
+    try {
+      Future<HttpClientResponse> send() async {
+        final request = await client.getUrl(Uri.parse('${ApiConfig.baseUrl}$path'));
+        final token = _tokenStore.accessToken;
+        if (token != null) {
+          request.headers.set('Authorization', 'Bearer $token');
+        }
+        return request.close().timeout(ApiConfig.connectTimeout);
+      }
+
+      var response = await send();
+      if (response.statusCode == 401 && await _refreshSession()) {
+        await response.drain<void>();
+        response = await send();
+      }
+      final bytes = <int>[];
+      await for (final chunk in response) {
+        bytes.addAll(chunk);
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(
+          message: _extractMessage(_tryJson(bytes)) ??
+              'Request failed (${response.statusCode}).',
+          statusCode: response.statusCode,
+        );
+      }
+      return bytes;
+    } on SocketException {
+      throw const ApiException(message: 'No internet connection.');
+    } on TimeoutException {
+      throw const ApiException(message: 'The server took too long to respond.');
+    } finally {
+      client.close();
+    }
+  }
+
+  static dynamic _tryJson(List<int> bytes) {
+    try {
+      return jsonDecode(utf8.decode(bytes));
+    } catch (_) {
+      return null;
     }
   }
 

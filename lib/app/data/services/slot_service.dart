@@ -10,12 +10,18 @@ import '../providers/api_client.dart';
 class SlotService extends GetxService {
   final ApiClient _api = Get.find<ApiClient>();
 
-  /// Monthly availability calendar — dates tagged available / unavailable /
-  /// offer / seasonal.
-  Future<dynamic> getAvailability(String listingId) =>
-      _api.getRequest(SlotEndpoints.availability(listingId));
+  /// Monthly availability calendar for [month] (`YYYY-MM`): `{days: [{date,
+  /// tag, isAvailable, availableUnits, price}]}`, each day tagged available /
+  /// unavailable / offer / seasonal.
+  Future<dynamic> getAvailability(String listingId, {String? month}) =>
+      _api.getRequest(
+        SlotEndpoints.availability(listingId),
+        query: {'month': ?month},
+      );
 
-  /// Available time slots for a given date (`YYYY-MM-DD`).
+  /// The sessions on a date (`YYYY-MM-DD`): `{slots: [{slotId, startTime,
+  /// endTime, price, isAvailable, availableUnits}]}`. Empty for stays sold
+  /// by the night.
   Future<dynamic> getSlots(String listingId, String date) =>
       _api.getRequest(SlotEndpoints.slots(listingId), query: {'date': date});
 

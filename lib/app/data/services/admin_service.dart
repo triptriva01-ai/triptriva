@@ -35,8 +35,10 @@ class AdminService extends GetxService {
   Future<dynamic> acceptActivity(String id) =>
       _api.putRequest(AdminActivityEndpoints.accept(id));
 
-  Future<dynamic> rejectActivity(String id) =>
-      _api.putRequest(AdminActivityEndpoints.reject(id));
+  Future<dynamic> rejectActivity(String id, {String? reason}) => _api.putRequest(
+        AdminActivityEndpoints.reject(id),
+        body: {'reason': ?reason},
+      );
 
   // ---- Users management (Page 3) -----------------------------------------
   /// All users. Filter: type (all/partner/normal), page, limit.

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../routes/app_pages.dart';
 import '../constants/admin_constants.dart';
 import '../controllers/admin_profile_controller.dart';
 import '../widgets/admin_shell.dart';
@@ -66,19 +67,19 @@ class _Settings extends StatelessWidget {
         _SettingsRow(
           icon: Icons.credit_card,
           label: AdminStrings.paymentMethod,
-          onTap: () => controller.pending(AdminStrings.paymentMethod),
+          onTap: () => Get.toNamed(Routes.PAYMENT_METHODS),
         ),
         const _RowDivider(),
         _SettingsRow(
           icon: Icons.language,
           label: AdminStrings.language,
-          onTap: () => controller.pending(AdminStrings.language),
+          onTap: () => Get.toNamed(Routes.LANGUAGE),
         ),
         const _RowDivider(),
         _SettingsRow(
           icon: Icons.chat_bubble_outline,
           label: AdminStrings.feedbacks,
-          onTap: () => controller.pending(AdminStrings.feedbacks),
+          onTap: () => Get.toNamed(Routes.FEEDBACK),
         ),
         const _RowDivider(),
         const SizedBox(height: 40),

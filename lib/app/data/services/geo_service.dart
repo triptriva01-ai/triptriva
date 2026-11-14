@@ -106,6 +106,29 @@ class GeoService extends GetxService {
     return GeoPoint(position.latitude, position.longitude);
   }
 
+  /// The device's position when location is already allowed, else null.
+  /// Never prompts — for screens that only use location to rank results.
+  Future<GeoPoint?> locationIfAllowed() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
+        return null;
+      }
+      final position = await Geolocator.getLastKnownPosition() ??
+          await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 8),
+            ),
+          );
+      return GeoPoint(position.latitude, position.longitude);
+    } catch (error) {
+      Get.log('Location unavailable: $error');
+      return null;
+    }
+  }
+
   /// Opens Google Maps (app if installed, else the website) on a point, or
   /// on an address search when the point isn't known.
   static Future<bool> openInMaps({GeoPoint? point, String address = ''}) {

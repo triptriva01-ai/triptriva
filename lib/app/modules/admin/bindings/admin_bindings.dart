@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 
 import '../controllers/admin_controller.dart';
+import '../../listing_detail/controllers/listing_detail_controller.dart';
 import '../controllers/admin_profile_controller.dart';
 
 class AdminRevenueBinding extends Bindings {
@@ -28,6 +29,15 @@ class AdminUsersBinding extends Bindings {
   @override
   void dependencies() {
     Get.lazyPut<AdminUsersController>(AdminUsersController.new);
+  }
+}
+
+/// Reuses the product page's controller; the submission's id is the
+/// listing's id.
+class AdminActivityReviewBinding extends Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<ListingDetailController>(ListingDetailController.new);
   }
 }
 

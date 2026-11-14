@@ -11,13 +11,19 @@ class PricingService extends GetxService {
   /// Returns: basePrice, discountedPrice, couponDiscount, finalAmount.
   Future<dynamic> getPricing(
     String listingId, {
-    required String slotId,
+    String? slotId,
     required int pax,
     required String date,
+    String? couponCode,
   }) =>
       _api.getRequest(
         PricingEndpoints.pricing(listingId),
-        query: {'slotId': slotId, 'pax': pax, 'date': date},
+        query: {
+          'slotId': ?slotId,
+          'pax': pax,
+          'date': date,
+          'couponCode': ?couponCode,
+        },
       );
 
   Future<dynamic> validateCoupon({
@@ -41,7 +47,7 @@ class PricingService extends GetxService {
 
   Future<dynamic> initiateBooking({
     required String listingId,
-    required String slotId,
+    String? slotId,
     required String date,
     required int pax,
     String? couponCode,
@@ -50,7 +56,7 @@ class PricingService extends GetxService {
         PricingEndpoints.initiateBooking,
         body: {
           'listingId': listingId,
-          'slotId': slotId,
+          'slotId': ?slotId,
           'date': date,
           'pax': pax,
           'couponCode': ?couponCode,

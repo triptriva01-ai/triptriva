@@ -31,9 +31,21 @@ abstract final class ApiConfig {
   /// launchSettings.json`.
   static const int port = 5080;
 
+  /// Full server address baked in at build time, e.g.
+  /// `--dart-define=API_BASE_URL=https://triptriva.ngrok.app`. Used by builds
+  /// that can't reach the laptop over the USB tunnel — the iPhone (iOS also
+  /// refuses plain http) and anything released. Empty means local development.
+  static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL');
+
   /// The API serves plain HTTP in development, so Android needs
   /// `usesCleartextTraffic` (already set in AndroidManifest.xml).
-  static String get baseUrl => 'http://$host:$port';
+  static String get baseUrl {
+    final override = _baseUrlOverride.trim();
+    if (override.isEmpty) return 'http://$host:$port';
+    return override.endsWith('/')
+        ? override.substring(0, override.length - 1)
+        : override;
+  }
 
   /// Common prefix shared by every route below.
   static const String apiPrefix = '/api';
@@ -48,9 +60,7 @@ abstract final class ApiConfig {
   }
 }
 
-/// The only endpoints the .NET backend implements today (`UsersController`).
-/// Everything below this class is still specification-only — see the note on
-/// [AuthEndpoints].
+/// `UsersController`.
 abstract final class UsersEndpoints {
   /// GET (page, limit, role) and POST.
   static const String users = '/api/users';
@@ -94,13 +104,10 @@ abstract final class AuthEndpoints {
 
 /// Home / Explore page — `Home` sheet (Page 1).
 abstract final class HomeEndpoints {
+  /// Banners, categories and the featured / trending / nearby rails.
+  static const String feed = '/api/home';
   static const String listings = '/api/listings';
-  static const String popular = '/api/listings/popular';
   static const String nearby = '/api/listings/nearby';
-  static const String fresh = '/api/listings/fresh';
-  static const String freshAll = '/api/listings/fresh/all';
-  static const String newAdventures = '/api/listings/new-adventures';
-  static const String banners = '/api/banners';
   static const String categories = '/api/listings/categories';
 }
 
@@ -150,6 +157,18 @@ abstract final class BookingEndpoints {
   static String cancel(String id) => '/api/bookings/$id/cancel';
   static String invoice(String id) => '/api/bookings/$id/invoice';
   static String payment(String id) => '/api/bookings/$id/payment';
+
+  /// Opens a gateway order for the amount due: `{orderId, amount, provider,
+  /// keyId, holdExpiresAt}`.
+  static String paymentOrder(String id) => '/api/bookings/$id/payment/order';
+
+  /// Body: `{orderId, paymentId, signature, method}` from the gateway.
+  static String paymentConfirm(String id) =>
+      '/api/bookings/$id/payment/confirm';
+
+  /// Development only: stands in for the gateway's checkout and returns a
+  /// signed `{orderId, paymentId, signature}`. 404 in production.
+  static const String sandboxCheckout = '/api/payments/sandbox/checkout';
 }
 
 /// Wishlist page — `Wishlist` sheet (Page 3).

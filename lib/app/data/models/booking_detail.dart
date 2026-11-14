@@ -1,3 +1,5 @@
+import '../constants/api_endpoints.dart';
+import 'listing_detail.dart' show ListingSlot, ListingSlotNames;
 import 'booking.dart';
 import 'geo_place.dart';
 
@@ -130,6 +132,10 @@ class BookingDetail {
     this.hasReview = false,
     this.checkInCode = '',
     this.point,
+    this.rawStatus = '',
+    this.listingId = '',
+    this.canCancel = false,
+    this.canDownloadInvoice = false,
   });
 
   factory BookingDetail.fromJson(Map<String, dynamic> json) {
@@ -140,38 +146,114 @@ class BookingDetail {
     final listingAddress = [listing['address'], listing['city']]
         .where((part) => part is String && part.trim().isNotEmpty)
         .join(', ');
+    final pricing = json['pricing'] is Map
+        ? (json['pricing'] as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
+    final payment = json['payment'] is Map
+        ? (json['payment'] as Map).cast<String, dynamic>()
+        : const <String, dynamic>{};
+    final when = DateTime.tryParse('${json['date'] ?? ''}');
+    final start = (listing['slotStartTime'] ?? json['slotStartTime']) as String?;
+    final end = (listing['slotEndTime'] ?? json['slotEndTime']) as String?;
+    final rawStatus = '${json['status'] ?? ''}'.toLowerCase();
+
+    double money(String key) => BillLine._toDouble(pricing[key]) ?? 0;
+    final base = money('basePrice');
+    final discounted = money('discountedPrice');
+    final coupon = money('couponDiscount');
+    final finalAmount = BillLine._toDouble(pricing['finalAmount']);
+    final method = '${payment['method'] ?? ''}';
+
+    // The API has no ready-made bill lines; build them from `pricing`.
+    final apiBill = pricing.isEmpty
+        ? const <BillLine>[]
+        : [
+            BillLine(
+              label: 'Trip charge',
+              amount: discounted,
+              originalAmount: base > discounted ? base : null,
+            ),
+            if (base > discounted)
+              BillLine(
+                label: 'Listing discount',
+                amount: base - discounted,
+                isDeduction: true,
+              ),
+            if (coupon > 0)
+              BillLine(
+                label: 'Coupon ${pricing['couponCode'] ?? ''}'.trim(),
+                amount: coupon,
+                isDeduction: true,
+              ),
+            if (base - (finalAmount ?? discounted) > 0)
+              BillLine(
+                label: 'You have saved',
+                amount: base - (finalAmount ?? discounted),
+                isSaving: true,
+              ),
+          ];
 
     return BookingDetail(
       id: '${json['id'] ?? ''}',
-      bookingId: '${json['bookingId'] ?? json['id'] ?? ''}',
-      listingName: '${json['listingName'] ?? json['title'] ?? ''}',
-      status: '${json['status']}'.toLowerCase() == 'completed'
+      bookingId: '${json['bookingId'] ?? _shortId('${json['id'] ?? ''}')}',
+      listingName:
+          '${json['listingName'] ?? json['title'] ?? listing['title'] ?? ''}',
+      status: rawStatus == 'completed' ||
+              rawStatus == 'cancelled' ||
+              rawStatus == 'expired'
           ? BookingStatus.completed
           : BookingStatus.booked,
+      rawStatus: rawStatus,
       address: json['address'] is String
           ? json['address'] as String
           : listingAddress,
-      imageUrl: '${json['imageUrl'] ?? json['image'] ?? ''}',
+      imageUrl: ApiConfig.mediaUrl(
+        '${json['imageUrl'] ?? json['image'] ?? listing['coverImage'] ?? ''}',
+      ),
       mapUrl: '${json['mapUrl'] ?? ''}',
       partnerName: '${json['partnerName'] ?? ''}',
       partnerPhone: '${json['partnerPhone'] ?? ''}',
-      bookingDate: '${json['bookingDate'] ?? ''}',
-      tripType: '${json['tripType'] ?? ''}',
-      timeSlot: '${json['timeSlot'] ?? ''}',
+      bookingDate: '${json['bookingDate'] ?? (when == null ? '' : _longDate(when))}',
+      tripType: '${json['tripType'] ?? (start == null ? _typeLabel('${listing['type'] ?? ''}') : ListingSlotNames.forTimes(start, end))}',
+      timeSlot: '${json['timeSlot'] ?? (start == null ? (listing['checkInTime'] == null ? '' : 'Check-in ${listing['checkInTime']}') : ListingSlot.formatRange(start, end))}',
       checkOutDate: '${json['checkOutDate'] ?? ''}',
-      checkOutTimeSlot: '${json['checkOutTimeSlot'] ?? ''}',
+      checkOutTimeSlot: '${json['checkOutTimeSlot'] ?? (listing['checkOutTime'] == null ? '' : 'Check-out ${listing['checkOutTime']}')}',
       stay: json['stay'] is Map<String, dynamic>
           ? StayDetails.fromJson(json['stay'] as Map<String, dynamic>)
           : const StayDetails(),
       facilities: _toStringList(json['facilities']),
-      policies: _toStringList(json['policies']),
+      policies: [
+        ..._toStringList(json['policies']),
+        if (listing['cancellationPolicy'] != null)
+          'Cancellation: ${listing['cancellationPolicy']}',
+      ],
       about: '${json['about'] ?? ''}',
-      total: BillLine._toDouble(json['total']) ?? 0,
-      charges: _toLines(json['charges']),
-      billLines: _toLines(json['billLines']),
+      total: BillLine._toDouble(json['total']) ?? finalAmount ?? 0,
+      charges: json['charges'] is List
+          ? _toLines(json['charges'])
+          : [
+              if (pricing.isNotEmpty)
+                BillLine(label: 'Trip charge', amount: discounted),
+              if (method.isNotEmpty)
+                BillLine(
+                  label: 'Paid by ${method.toUpperCase()}',
+                  amount: BillLine._toDouble(payment['amountPaid']) ?? 0,
+                ),
+            ],
+      billLines: json['billLines'] is List ? _toLines(json['billLines']) : apiBill,
+      listingId: '${json['listingId'] ?? ''}',
+      canCancel: json['canCancel'] == true,
+      canDownloadInvoice: json['canDownloadInvoice'] == true,
       related: json['related'] is Map<String, dynamic>
           ? RelatedListing.fromJson(json['related'] as Map<String, dynamic>)
-          : null,
+          : '${json['listingId'] ?? ''}'.isEmpty
+              ? null
+              : RelatedListing(
+                  id: '${json['listingId']}',
+                  name: '${listing['title'] ?? ''}',
+                  address: listingAddress,
+                  imageUrl: ApiConfig.mediaUrl('${listing['coverImage'] ?? ''}'),
+                ),
       hasReview: json['hasReview'] as bool? ?? false,
       checkInCode: '${json['checkInCode'] ?? ''}',
       point: GeoPoint.tryParse(
@@ -230,6 +312,34 @@ class BookingDetail {
   /// The listing's map point, for directions; null for older bookings (then
   /// directions use [address]).
   final GeoPoint? point;
+
+  /// The API's status: pending_payment, confirmed, completed, cancelled,
+  /// expired.
+  final String rawStatus;
+  final String listingId;
+  final bool canCancel;
+  final bool canDownloadInvoice;
+
+  bool get isCancelled => rawStatus == 'cancelled';
+
+  static const _months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  /// "12 November 2026".
+  static String _longDate(DateTime date) =>
+      '${date.day} ${_months[date.month - 1]} ${date.year}';
+
+  static String _shortId(String id) =>
+      id.length > 8 ? id.substring(id.length - 8).toUpperCase() : id;
+
+  static String _typeLabel(String type) => switch (type) {
+        'houseboat' => 'House Boat',
+        'adventure' => 'Adventure',
+        'stay' => 'Stay',
+        _ => '',
+      };
 
   bool get isCompleted => status == BookingStatus.completed;
 

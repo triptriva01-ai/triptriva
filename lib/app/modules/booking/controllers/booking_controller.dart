@@ -4,6 +4,8 @@ import '../../../data/models/listing_detail.dart';
 import '../../../data/providers/api_exception.dart';
 import '../../../data/services/pricing_service.dart';
 import '../../../data/services/slot_service.dart';
+import '../../../routes/app_pages.dart';
+import '../../payment/controllers/payment_controller.dart';
 import '../constants/booking_constants.dart';
 
 /// Where the traveller is in the booking flow.
@@ -71,15 +73,40 @@ class BookingController extends GetxController {
   Future<void> loadAvailability() async {
     isLoading.value = true;
     try {
-      final data = await _slotService.getAvailability(listingId);
+      final current = month.value;
+      final data = await _slotService.getAvailability(
+        listingId,
+        month: '${current.year}-${current.month.toString().padLeft(2, '0')}',
+      );
       if (data is Map<String, dynamic>) {
-        fullDays.assignAll(_days(data['full'] ?? data['unavailable']));
-        offerDays.assignAll(_days(data['offer']));
-        seasonDays.assignAll(_days(data['seasonal'] ?? data['season']));
+        final days = data['days'];
+        if (days is List) {
+          // `{days: [{date, tag, isAvailable}]}` — sort each date by its tag.
+          final full = <String>{}, offer = <String>{}, season = <String>{};
+          for (final day in days.whereType<Map>()) {
+            final date = '${day['date'] ?? ''}';
+            if (date.length < 10) continue;
+            final key = date.substring(0, 10);
+            final tag = '${day['tag'] ?? ''}';
+            if (day['isAvailable'] == false || tag == 'unavailable') {
+              full.add(key);
+            } else if (tag == 'offer') {
+              offer.add(key);
+            } else if (tag == 'seasonal') {
+              season.add(key);
+            }
+          }
+          fullDays.assignAll(full);
+          offerDays.assignAll(offer);
+          seasonDays.assignAll(season);
+        } else {
+          fullDays.assignAll(_days(data['full'] ?? data['unavailable']));
+          offerDays.assignAll(_days(data['offer']));
+          seasonDays.assignAll(_days(data['seasonal'] ?? data['season']));
+        }
       }
     } on ApiException catch (error) {
       Get.log('Availability load failed: $error');
-      _loadSampleAvailability();
     } finally {
       isLoading.value = false;
     }
@@ -141,10 +168,21 @@ class BookingController extends GetxController {
 
     try {
       final data = await _slotService.getSlots(listingId, formatDate(date));
-      if (data is List) {
+      // `{slots: [...]}` from the API; a bare list from older builds.
+      final items = data is Map ? data['slots'] : data;
+      if (items is List) {
         slots.assignAll(
-          data.whereType<Map<String, dynamic>>().map(ListingSlot.fromJson),
+          items.whereType<Map<String, dynamic>>().map(ListingSlot.fromJson),
         );
+      }
+      if (data is Map && slots.isEmpty) {
+        // A per-night stay: the day's own price is the price.
+        final price = _toDouble(data['price']);
+        if (price != null && price > 0) {
+          basePrice.value = price;
+          discountedPrice.value = price;
+        }
+        refreshPricing();
       }
     } on ApiException catch (error) {
       Get.log('Slots load failed: $error');
@@ -202,18 +240,23 @@ class BookingController extends GetxController {
     return nights < 1 ? 1 : nights;
   }
 
-  double get total => (discountedPrice.value * totalDays) -
-      couponDiscount.value;
+  double get total =>
+      finalAmount.value ??
+      (discountedPrice.value * totalDays) - couponDiscount.value;
+
+  /// Server quote for the whole party: `basePrice` and `discountedPrice`
+  /// already cover every guest, `finalAmount` is what will be charged.
+  final finalAmount = RxnDouble();
 
   Future<void> refreshPricing() async {
     final slot = selectedSlot.value;
     final date = selectedDate.value;
-    if (slot == null || date == null) return;
+    if (date == null || (slot == null && slots.isNotEmpty)) return;
 
     try {
       final data = await _pricingService.getPricing(
         listingId,
-        slotId: slot.id,
+        slotId: slot?.id,
         pax: pax.value,
         date: formatDate(date),
       );
@@ -222,8 +265,9 @@ class BookingController extends GetxController {
         discountedPrice.value =
             _toDouble(data['discountedPrice']) ?? discountedPrice.value;
         couponDiscount.value = _toDouble(data['couponDiscount']) ?? 0;
+        finalAmount.value = _toDouble(data['finalAmount']);
         savings.value = _toDouble(data['savings']) ??
-            (basePrice.value - discountedPrice.value);
+            (basePrice.value - discountedPrice.value) + couponDiscount.value;
       }
     } on ApiException catch (error) {
       Get.log('Pricing load failed: $error');
@@ -259,8 +303,10 @@ class BookingController extends GetxController {
 
   // ── Navigation ──────────────────────────────────────────────────────
 
+  /// Stays sold by the night have no sessions to pick.
   bool get canContinue =>
-      selectedDate.value != null && selectedSlot.value != null;
+      selectedDate.value != null &&
+      (selectedSlot.value != null || slots.isEmpty);
 
   void goBack() {
     if (step.value == BookingStep.people) {
@@ -280,18 +326,45 @@ class BookingController extends GetxController {
   Future<void> book() async {
     final slot = selectedSlot.value;
     final date = selectedDate.value;
-    if (slot == null || date == null || isBooking.value) return;
+    if (!canContinue || date == null || isBooking.value) return;
 
     isBooking.value = true;
     try {
-      await _pricingService.initiateBooking(
+      // Holds the slot for a few minutes and returns the booking, priced.
+      final data = await _pricingService.initiateBooking(
         listingId: listingId,
-        slotId: slot.id,
+        slotId: slot?.id,
         date: formatDate(date),
         pax: pax.value,
       );
-      // TODO(booking): hand off to the payment screen once it exists.
-      _pending('Payment');
+      final booking = data is Map ? data.cast<String, dynamic>() : null;
+      final pricing = booking?['pricing'] is Map
+          ? (booking!['pricing'] as Map).cast<String, dynamic>()
+          : const <String, dynamic>{};
+      final detail = listing.value;
+      final tripFee = _toDouble(pricing['discountedPrice']) ??
+          discountedPrice.value * totalDays;
+      final originalFee =
+          _toDouble(pricing['basePrice']) ?? basePrice.value * totalDays;
+      final coupon = _toDouble(pricing['couponDiscount']) ?? couponDiscount.value;
+      final bookingId = booking?['id']?.toString();
+      if (bookingId == null || bookingId.isEmpty) {
+        throw const ApiException(message: 'The booking could not be started.');
+      }
+      Get.toNamed(
+        Routes.PAYMENT,
+        arguments: PaymentArgs(
+          listingName: detail?.name ?? '',
+          tripFee: tripFee,
+          originalTripFee: originalFee > tripFee ? originalFee : null,
+          couponDiscount: coupon,
+          savings: (originalFee - tripFee) + coupon,
+          bookingId: bookingId,
+          imageUrl: (detail?.imageUrls.isNotEmpty ?? false)
+              ? detail!.imageUrls.first
+              : null,
+        ),
+      );
     } on ApiException catch (error) {
       Get.log('Booking failed: $error');
       Get.snackbar(
@@ -303,29 +376,5 @@ class BookingController extends GetxController {
     } finally {
       isBooking.value = false;
     }
-  }
-
-  void _pending(String feature) {
-    Get.snackbar(
-      BookingStrings.pendingTitle,
-      BookingStrings.pendingMessage(feature),
-      duration: BookingDurations.snackbar,
-      snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
-  // ---------------------------------------------------------------------
-  // Development placeholder — remove once
-  // `GET /api/slots/{id}/availability` serves real data.
-  // ---------------------------------------------------------------------
-
-  void _loadSampleAvailability() {
-    final current = month.value;
-    String day(int value) =>
-        formatDate(DateTime(current.year, current.month, value));
-
-    fullDays.assignAll({day(7), day(9), day(14), day(21)});
-    offerDays.assignAll({day(10), day(11), day(18)});
-    seasonDays.assignAll({day(24), day(25)});
   }
 }

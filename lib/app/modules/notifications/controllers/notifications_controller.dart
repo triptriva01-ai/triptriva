@@ -4,7 +4,6 @@ import '../../../data/models/app_notification.dart';
 import '../../../data/providers/api_exception.dart';
 import '../../../data/services/notification_service.dart';
 import '../../../routes/app_pages.dart';
-import '../constants/notifications_constants.dart';
 
 /// Which rows the list is showing.
 enum NotificationFilter { all, offers }
@@ -17,6 +16,7 @@ class NotificationsController extends GetxController {
   final notifications = <AppNotification>[].obs;
   final selectedFilter = NotificationFilter.all.obs;
   final isLoading = false.obs;
+  final errorMessage = ''.obs;
 
   @override
   void onInit() {
@@ -30,18 +30,20 @@ class NotificationsController extends GetxController {
       final data = await _notificationService.getNotifications(
         type: selectedFilter.value.name,
       );
+      final items = data is Map ? data['items'] : data;
       notifications.assignAll(
-        data is List
-            ? data
+        items is List
+            ? items
                 .whereType<Map<String, dynamic>>()
                 .map(AppNotification.fromJson)
             : const <AppNotification>[],
       );
+      errorMessage.value = '';
       // Opening the screen is what "seen" means here.
       unawaitedMarkAllRead();
     } on ApiException catch (error) {
       Get.log('Notifications load failed: $error');
-      _loadSampleNotifications();
+      errorMessage.value = error.message;
     } finally {
       isLoading.value = false;
     }
@@ -83,65 +85,9 @@ class NotificationsController extends GetxController {
       Get.toNamed(Routes.BOOKING_DETAIL, arguments: target);
       return;
     }
-    if (item.isOffer) {
-      _pending(item.title);
+    // Offers point at a listing.
+    if (item.targetType == 'listing' && target != null) {
+      Get.toNamed(Routes.LISTING_DETAIL, arguments: target);
     }
-  }
-
-  void _pending(String feature) {
-    Get.snackbar(
-      NotificationsStrings.pendingTitle,
-      NotificationsStrings.pendingMessage(feature),
-      duration: NotificationsDurations.snackbar,
-      snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
-  // ---------------------------------------------------------------------
-  // Development placeholder — remove once `GET /api/notifications` serves
-  // real data.
-  // ---------------------------------------------------------------------
-
-  void _loadSampleNotifications() {
-    notifications.assignAll(const [
-      AppNotification(
-        id: '1',
-        title: 'House Boat Booking',
-        message: 'Your booking is for the kerala house boat is incomplete.'
-            'Hurry up! before the slot filled.',
-        timeAgo: '3 hours ago',
-        kind: NotificationKind.booking,
-      ),
-      AppNotification(
-        id: '2',
-        title: 'Adventure Booking',
-        message: 'Your booking for the kayakin is incomplete.'
-            'Hurry up! before the slot filled.',
-        timeAgo: '3 hours ago',
-        kind: NotificationKind.booking,
-      ),
-      AppNotification(
-        id: '3',
-        title: 'Successfully paid',
-        message: 'Yout have paid ₹500/- for the booking',
-        timeAgo: '3 hours ago',
-        kind: NotificationKind.payment,
-      ),
-      AppNotification(
-        id: '4',
-        title: 'Stay Booking',
-        message: 'Your booking for the stay in tent house for 12 june 2026 '
-            'is completed.',
-        timeAgo: '3 hours ago',
-        kind: NotificationKind.booking,
-      ),
-      AppNotification(
-        id: '5',
-        title: 'Offers',
-        timeAgo: '3 hours ago',
-        kind: NotificationKind.offer,
-        imageUrl: 'placeholder',
-      ),
-    ]);
   }
 }

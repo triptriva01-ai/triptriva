@@ -1,8 +1,10 @@
 import 'package:get/get.dart';
 
+import '../../../data/models/admin_models.dart';
 import '../../../data/models/listing.dart';
 import '../../../data/models/listing_detail.dart';
 import '../../../data/providers/api_exception.dart';
+import '../../../data/services/admin_service.dart';
 import '../../../data/services/property_service.dart';
 import '../../../data/services/wishlist_service.dart';
 import '../../../routes/app_pages.dart';
@@ -32,6 +34,10 @@ class ListingDetailController extends GetxController {
   /// The id being shown, from route arguments.
   String listingId = '';
 
+  /// Opened from the admin activities list, for a possibly unpublished
+  /// listing: no nearby rail, wishlist or review paging.
+  bool _isAdminReview = false;
+
   @override
   void onInit() {
     super.onInit();
@@ -43,6 +49,11 @@ class ListingDetailController extends GetxController {
       // Render immediately from the card the traveller tapped, then fill in
       // the rest.
       detail.value = _fromCard(args);
+    } else if (args is AdminActivitySubmission) {
+      // Admin review: a submission's id is its listing's id.
+      _isAdminReview = true;
+      listingId = args.id;
+      detail.value = ListingDetail(id: args.id, name: args.name);
     } else if (args is Map) {
       listingId = '${args['id'] ?? ''}';
     } else if (args is String) {
@@ -72,21 +83,104 @@ class ListingDetailController extends GetxController {
     isLoading.value = true;
     errorMessage.value = '';
     try {
+      if (_isAdminReview) {
+        final data = await Get.find<AdminService>().getActivity(listingId);
+        final listing = data is Map ? data['listing'] : null;
+        if (listing is Map<String, dynamic>) {
+          detail.value = ListingDetail.fromJson(listing);
+        }
+        return;
+      }
       final data = await _propertyService.getDetail(listingId);
       if (data is Map<String, dynamic>) {
         detail.value = ListingDetail.fromJson(data);
       }
     } on ApiException catch (error) {
       Get.log('Listing detail load failed: $error');
-      _loadSampleDetail();
-      // Only complain if there is nothing at all to show.
+      // Keep whatever the card already showed; only complain if there is
+      // nothing at all.
       if (detail.value == null) {
         errorMessage.value = error.message;
       }
+      return;
     } finally {
       isLoading.value = false;
     }
+    await Future.wait([_loadNearby(), _loadWishlisted(), _loadReviews()]);
   }
+
+  /// "Near By" rail — a separate endpoint, nearest first.
+  Future<void> _loadNearby() async {
+    try {
+      final data = await _propertyService.getNearby(listingId);
+      final current = detail.value;
+      if (data is! List || current == null) return;
+      detail.value = current.copyWith(
+        nearbyTitle: _nearbyTitle(current.type),
+        nearby: data
+            .whereType<Map<String, dynamic>>()
+            .map(Listing.fromJson)
+            .where((item) => item.id != listingId)
+            .toList(),
+      );
+    } on ApiException catch (error) {
+      Get.log('Nearby listings load failed: $error');
+    }
+  }
+
+  static String _nearbyTitle(String type) => switch (type) {
+        'houseboat' => 'Near By House Boats',
+        'adventure' => 'Near By Adventures',
+        _ => 'Near By Stays',
+      };
+
+  Future<void> _loadWishlisted() async {
+    try {
+      final data = await _wishlistService.isWishlisted(listingId);
+      if (data is Map) {
+        isWishlisted.value = data['isWishlisted'] == true ||
+            data['inWishlist'] == true ||
+            data['exists'] == true;
+      }
+    } on ApiException catch (error) {
+      Get.log('Wishlist check failed: $error');
+    }
+  }
+
+  /// The detail payload carries only the newest few reviews; fetch a full
+  /// page for the filter chips.
+  Future<void> _loadReviews() async {
+    try {
+      final data = await _propertyService.getReviews(
+        listingId,
+        query: {'filter': _apiFilter(reviewFilter.value), 'limit': 20},
+      );
+      final current = detail.value;
+      if (data is! Map || current == null) return;
+      final page = data['reviews'];
+      final items = page is Map ? page['items'] : page;
+      if (items is! List) return;
+      final summary = data['summary'];
+      detail.value = current.copyWith(
+        reviews: items
+            .whereType<Map<String, dynamic>>()
+            .map(ListingReview.fromJson)
+            .toList(),
+        reviewCount: summary is Map && summary['count'] is num
+            ? (summary['count'] as num).toInt()
+            : null,
+      );
+    } on ApiException catch (error) {
+      Get.log('Reviews load failed: $error');
+    }
+  }
+
+  static String _apiFilter(ReviewFilter filter) => switch (filter) {
+        ReviewFilter.recent => 'recent',
+        ReviewFilter.positive => 'positive',
+        ReviewFilter.negative => 'negative',
+        _ => 'all',
+      };
 
   /// Reviews matching the current filter.
   ///
@@ -108,8 +202,11 @@ class ListingDetailController extends GetxController {
     };
   }
 
-  void selectReviewFilter(ReviewFilter filter) =>
-      reviewFilter.value = filter;
+  void selectReviewFilter(ReviewFilter filter) {
+    if (reviewFilter.value == filter) return;
+    reviewFilter.value = filter;
+    if (listingId.isNotEmpty) _loadReviews();
+  }
 
   void selectImage(int index) => currentImage.value = index;
 
@@ -163,116 +260,6 @@ class ListingDetailController extends GetxController {
       ListingDetailStrings.pendingMessage(feature),
       duration: ListingDetailDurations.snackbar,
       snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
-  // ---------------------------------------------------------------------
-  // Development placeholder — remove once `GET /api/properties/{id}` serves
-  // real data.
-  // ---------------------------------------------------------------------
-
-  void _loadSampleDetail() {
-    final existing = detail.value;
-
-    detail.value = ListingDetail(
-      id: existing?.id ?? listingId,
-      name: existing?.name ?? 'Thrissur Tree House',
-      address: 'Palarivattam , Kochi , Kerala',
-      imageUrls: existing?.imageUrls ?? const [],
-      rooms: 3,
-      bathrooms: 3,
-      beds: 6,
-      rating: 4.5,
-      ratingLabel: 'Great',
-      ratingCaption: 'For the user',
-      reviewCount: 5,
-      host: const ListingHost(name: 'Raju MNK'),
-      facilities: const ['Free wifi', 'Musical dramas', 'DJ', '3 rooms'],
-      policies: const [
-        'Cancellation is allowed before 10 days before the slot date',
-        'Guests are not allowed',
-        'Outside food is not allowed',
-        '3 rooms',
-      ],
-      coordinates: '9.9948565, 76.3201928',
-      about: 'A houseboat is a unique type of accommodation designed to offer '
-          'the comfort of a home while floating on water. Traditionally used '
-          'for transportation and living, houseboats today are popular for '
-          'leisure travel and relaxing vacations, especially in scenic '
-          'backwater destinations.',
-      reviews: const [
-        ListingReview(
-          id: '1',
-          authorName: 'Raju MNK',
-          rating: 4.5,
-          comment: 'This houseboat is a unique type of accommodation designed '
-              'to offer the comfort of a home while floating on water.',
-        ),
-        ListingReview(
-          id: '2',
-          authorName: 'Raju MNK',
-          rating: 4.5,
-          comment: 'This houseboat is a unique type of accommodation designed '
-              'to offer the comfort of a home while floating on water.',
-        ),
-      ],
-      nearbyTitle: 'Near By Tree House',
-      nearby: const [
-        Listing(
-          id: '101',
-          title: 'Tree House',
-          location: 'Palarivattam',
-          rating: 4.5,
-          price: 500,
-          originalPrice: 1200,
-          discountPercent: 14,
-        ),
-        Listing(
-          id: '102',
-          title: 'Tree House',
-          location: 'Palarivattam',
-          rating: 4.5,
-          price: 500,
-          originalPrice: 1200,
-          discountPercent: 14,
-        ),
-        Listing(
-          id: '103',
-          title: 'Tree House',
-          location: 'Palarivattam',
-          rating: 4.5,
-          price: 500,
-          originalPrice: 1200,
-          discountPercent: 14,
-        ),
-      ],
-      slots: const [
-        ListingSlot(
-          id: 'day',
-          name: 'Day Trip',
-          timeRange: '11 AM - 05 PM',
-          price: 500,
-          originalPrice: 1200,
-        ),
-        ListingSlot(
-          id: 'overnight',
-          name: 'Overnight',
-          timeRange: '12 PM - 09 AM',
-          price: 900,
-          originalPrice: 1600,
-        ),
-        ListingSlot(
-          id: 'night',
-          name: 'Night Stay',
-          timeRange: '5:30 PM - 09 AM',
-          price: 1200,
-          originalPrice: 2000,
-        ),
-      ],
-      price: 500,
-      originalPrice: 1200,
-      cancellationNote: 'Free cancellation before 24 hours',
-      refreshingRoomNote: 'Get 1 hour for refreshing',
     );
   }
 }

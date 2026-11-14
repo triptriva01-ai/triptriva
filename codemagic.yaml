@@ -6,8 +6,17 @@
 #      `integrations.app_store_connect` below).
 #   2. App settings > Environment variables: create the group "maps" with
 #      MAPS_API_KEY = <iOS Maps SDK key>, marked Secure.
-#   3. In App Store Connect, create the app with bundle id
+#   3. App settings > Environment variables: create the group "server" with
+#      API_BASE_URL = the backend's public https address, e.g.
+#      https://your-name.ngrok-free.app (no trailing slash). iOS refuses plain
+#      http, and an iPhone can't use the laptop's USB tunnel.
+#   4. In App Store Connect, create the app with bundle id
 #      com.triptrivia.tripTrivia before the first build.
+#   5. In the Apple Developer portal, enable "Sign in with Apple" on that
+#      App ID (Runner.entitlements asks for it; signing fails without it).
+#
+# Builds are started by hand from the Codemagic dashboard, so a push does not
+# spend build minutes.
 
 workflows:
   ios-testflight:
@@ -22,16 +31,10 @@ workflows:
       cocoapods: default
       groups:
         - maps
+        - server
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.triptrivia.tripTrivia
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-      cancel_previous_builds: true
     scripts:
       - name: Write the iOS Maps key
         script: |
@@ -46,10 +49,17 @@ workflows:
         script: cd ios && pod install --repo-update
       - name: Set up code signing
         script: xcode-project use-profiles
+      - name: Check the server address
+        script: |
+          case "$API_BASE_URL" in
+            https://*) echo "App will use $API_BASE_URL" ;;
+            *) echo "API_BASE_URL must be an https address (group 'server')." >&2; exit 1 ;;
+          esac
       - name: Build ipa
         script: |
           flutter build ipa --release \
             --build-number=$BUILD_NUMBER \
+            --dart-define=API_BASE_URL=$API_BASE_URL \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa

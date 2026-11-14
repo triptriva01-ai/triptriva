@@ -146,8 +146,10 @@ class _ResendRow extends StatelessWidget {
     return Obx(() {
       final seconds = controller.secondsUntilResend.value;
 
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      // Wraps onto two lines rather than overflowing a narrow screen.
+      return Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           const Text(OtpStrings.resendPrompt, style: OtpStyle.resend),
           if (seconds > 0)

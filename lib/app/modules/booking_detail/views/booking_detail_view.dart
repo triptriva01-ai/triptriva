@@ -105,6 +105,20 @@ class BookingDetailView extends GetView<BookingDetailController> {
                           controller: controller,
                         ),
                       ],
+                      if (detail.canCancel) ...[
+                        const SizedBox(height: BookingDetailSizes.cardGap),
+                        Center(
+                          child: TextButton(
+                            onPressed: controller.cancelBooking,
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                            child: const Text(
+                              BookingDetailStrings.cancelBooking,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

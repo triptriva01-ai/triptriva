@@ -7,6 +7,12 @@ import '../modules/booking_detail/bindings/booking_detail_binding.dart';
 import '../modules/booking_detail/views/booking_detail_view.dart';
 import '../modules/admin/bindings/admin_bindings.dart';
 import '../modules/admin/views/admin_activities_view.dart';
+import '../modules/admin/views/admin_activity_review_view.dart';
+import '../modules/payment/bindings/payment_bindings.dart';
+import '../modules/payment/views/booking_success_view.dart';
+import '../modules/payment/views/payment_view.dart';
+import '../modules/search/bindings/search_binding.dart';
+import '../modules/search/views/search_view.dart';
 import '../modules/admin/views/admin_payments_view.dart';
 import '../modules/admin/views/admin_profile_view.dart';
 import '../modules/admin/views/admin_revenue_view.dart';
@@ -236,6 +242,29 @@ class AppPages {
     GetPage(
       name: _Paths.ABOUT,
       page: () => const AboutView(),
+    ),
+    GetPage(
+      name: _Paths.SEARCH,
+      page: () => const SearchView(),
+      binding: SearchBinding(),
+      transition: Transition.fadeIn,
+    ),
+    GetPage(
+      name: _Paths.PAYMENT,
+      page: () => const PaymentView(),
+      binding: PaymentBinding(),
+    ),
+    GetPage(
+      name: _Paths.BOOKING_SUCCESS,
+      page: () => const BookingSuccessView(),
+      binding: BookingSuccessBinding(),
+      transition: Transition.fadeIn,
+    ),
+    GetPage(
+      name: _Paths.ADMIN_ACTIVITY_REVIEW,
+      page: () => const AdminActivityReviewView(),
+      binding: AdminActivityReviewBinding(),
+      middlewares: [AdminGuard()],
     ),
   ];
 }

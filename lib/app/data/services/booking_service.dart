@@ -21,9 +21,36 @@ class BookingService extends GetxService {
         body: {'reason': ?reason},
       );
 
-  Future<dynamic> getInvoice(String id) =>
-      _api.getRequest(BookingEndpoints.invoice(id));
+  /// The invoice as PDF bytes.
+  Future<List<int>> getInvoice(String id) =>
+      _api.getBytes(BookingEndpoints.invoice(id));
 
+  /// The bill line by line, and what is still due.
   Future<dynamic> getPayment(String id) =>
       _api.getRequest(BookingEndpoints.payment(id));
+
+  Future<dynamic> createPaymentOrder(String id) =>
+      _api.postRequest(BookingEndpoints.paymentOrder(id));
+
+  Future<dynamic> confirmPayment(
+    String id, {
+    required String orderId,
+    required String paymentId,
+    required String signature,
+    String? method,
+  }) =>
+      _api.postRequest(
+        BookingEndpoints.paymentConfirm(id),
+        body: {
+          'orderId': orderId,
+          'paymentId': paymentId,
+          'signature': signature,
+          'method': ?method,
+        },
+      );
+
+  Future<dynamic> sandboxCheckout(String orderId) => _api.postRequest(
+        BookingEndpoints.sandboxCheckout,
+        body: {'orderId': orderId},
+      );
 }
