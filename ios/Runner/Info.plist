@@ -32,6 +32,8 @@
 	<string>TRIPTRIVA uses the camera to photograph your profile picture, listing photos and verification documents.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>TRIPTRIVA uses your photo library so you can choose your profile picture, listing photos and verification documents.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
